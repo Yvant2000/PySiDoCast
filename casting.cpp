@@ -3,6 +3,14 @@
 #include <cmath>
 #include <omp.h>
 
+#if defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__)
+    #include <windows.h>
+#elif defined(__apple__) || defined(__MACH__)
+    #error "not implemented for Mac OS X"
+#else  // Linux
+    #include <pthread.h>
+    #warning "Not implemented for this platform yet"
+#endif
 
 //#define EPSILON 0.001f
 
@@ -360,6 +368,23 @@ inline long get_pixel_at(struct Surface *surfaces, struct pos2 ray, float view_d
 }
 
 
+/*
+ * Get the index of a free thread in the thread pool.
+ * If no free thread is available, wait for one to become free.
+ */
+inline void wait_thread(HANDLE thread) {
+    if (thread == nullptr)
+        return;
+
+    DWORD exit_code;
+    GetExitCodeThread(thread, &exit_code)
+    if (exit_code != STILL_ACTIVE)
+        return;
+
+    WaitForSingleObject(thread, INFINITE);
+}
+
+
 static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObject *kwargs) {
     PyObject *screen;
 
@@ -438,39 +463,50 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
 
     float progress_y = 0.5f;
 
-//    std::vector<pthread_t>threads (thread_count);
 
-    omp_set_num_threads(thread_count);
+    HANDLE *threads = (HANDLE *)malloc(sizeof(HANDLE) * thread_count);
+    int thread_index = 0;
+    for (int i = thread_count; i; --i)
+        threads[i] = nullptr;  // init threads to nullptr
 
-    for (Py_ssize_t dst_y = 0; dst_y < height; ++dst_y) {
+//    omp_set_num_threads(thread_count);
+    pos2 ray;
+    for (Py_ssize_t dst_y = height; dst_y; --dst_y) {
 
         progress_y -= d_progress_y;
 //        progress_y = 0.5 - d_progress_y * dst_y;
 
-        float y_ = forward_y + progress_y * right_y;
-//        ray.B.y = forward_y + progress_y * right_y;
+        // float y_ = forward_y + progress_y * right_y;
+        ray.B.y = forward_y + progress_y * right_y;
 
-//        float progress_x = 0.5f;
+        float progress_x = 0.5f;
 
-        #pragma omp parallel for
-        for (Py_ssize_t dst_x = 0; dst_x < width; ++dst_x) {
-            pos2 ray;
+//        #pragma omp parallel for
+        for (Py_ssize_t dst_x = width; dst_x; --dst_x) {
+            wait_thread(threads[thread_index]); // Ensure that the thread is free before using it.
+
             ray.A = {x, y, z};
 
-//            progress_x -= d_progress_x;
-            float progress_x = 0.5f - dst_x * d_progress_x;
+            progress_x -= d_progress_x;
+            // float progress_x = 0.5f - dst_x * d_progress_x;
 
             ray.B.x = forward_x + progress_x * right_x;
-            ray.B.y = y_;
+            // ray.B.y = y_;
             ray.B.z = forward_z + progress_x * right_z;
 
             long pixel = get_pixel_at(self->surfaces, ray, view_distance);
 
             if (pixel)   // If the pixel is empty, don't draw it.
-//                *((unsigned long *) ((unsigned char *) (buf) - 2)) = pixel;
-                *((unsigned long *) ((unsigned char *) (buf + dst_y * width + dst_x) - 2)) = pixel;
+                *((unsigned long *) ((unsigned char *) (buf) - 2)) = pixel;
+                // *((unsigned long *) ((unsigned char *) (buf + dst_y * width + dst_x) - 2)) = pixel;
 
-//            buf += 1;
+            void *args[] = {*((unsigned long *) ((unsigned char *) (buf) - 2)), self->surfaces, &ray, &view_distance};
+
+            threads[thread_index] = CreateThread(NULL, 0, ..., &args, 0, NULL);
+
+            thread_index++;
+
+            buf ++;
         }
 
     }
@@ -478,6 +514,8 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
     PyBuffer_Release(&dst_buffer);
 
     free_temp_surfaces(&(self->surfaces));
+
+    free(threads);
 
     Py_RETURN_NONE;
 }

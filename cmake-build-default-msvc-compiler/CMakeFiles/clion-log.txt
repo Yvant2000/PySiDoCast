@@ -1,0 +1,67 @@
+"C:\Program Files\JetBrains\CLion 2022.2.4\bin\cmake\win\bin\cmake.exe" -G "CodeBlocks - NMake Makefiles" -S "E:\python projects\PySiDoCast" -B "E:\python projects\PySiDoCast\cmake-build-default-msvc-compiler"
+-- The CXX compiler identification is MSVC 19.34.31935.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - failed
+-- Check for working CXX compiler: C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.34.31933/bin/Hostx86/x64/cl.exe
+-- Check for working CXX compiler: C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.34.31933/bin/Hostx86/x64/cl.exe - broken
+CMake Error at C:/Program Files/JetBrains/CLion 2022.2.4/bin/cmake/win/share/cmake-3.23/Modules/CMakeTestCXXCompiler.cmake:62 (message):
+  The C++ compiler
+
+    "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.34.31933/bin/Hostx86/x64/cl.exe"
+
+  is not able to compile a simple test program.
+
+  It fails with the following output:
+
+    Change Dir: E:/python projects/PySiDoCast/cmake-build-default-msvc-compiler/CMakeFiles/CMakeTmp
+    
+    Run Build Command(s):nmake -f Makefile /nologo cmTC_863d1\fast && 	"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\14.34.31933\bin\HostX86\x64\nmake.exe"  -f CMakeFiles\cmTC_863d1.dir\build.make /nologo -L                  CMakeFiles\cmTC_863d1.dir\build
+    Building CXX object CMakeFiles/cmTC_863d1.dir/testCXXCompiler.cxx.obj
+    	"C:\Program Files\JetBrains\CLion 2022.2.4\bin\cmake\win\bin\cmake.exe" -E cmake_cl_compile_depends --dep-file=CMakeFiles\cmTC_863d1.dir\testCXXCompiler.cxx.obj.d --working-dir="E:\python projects\PySiDoCast\cmake-build-default-msvc-compiler\CMakeFiles\CMakeTmp" --filter-prefix="Remarqueá: inclusion du fichierá:  " -- C:\PROGRA~2\MICROS~1\2022\BUILDT~1\VC\Tools\MSVC\1434~1.319\bin\Hostx86\x64\cl.exe @C:\Users\YVES-A~1\AppData\Local\Temp\nmD6C5.tmp
+    testCXXCompiler.cxx
+    Linking CXX executable cmTC_863d1.exe
+    	"C:\Program Files\JetBrains\CLion 2022.2.4\bin\cmake\win\bin\cmake.exe" -E vs_link_exe --intdir=CMakeFiles\cmTC_863d1.dir --rc=C:\MinGW64\mingw64\bin\windres.exe --mt="" --manifests -- F:\Programmes\MSYS2\mingw64\bin\ld.exe /nologo @CMakeFiles\cmTC_863d1.dir\objects1.rsp @C:\Users\YVES-A~1\AppData\Local\Temp\nmD714.tmp
+    RC Pass 1: command "C:\MinGW64\mingw64\bin\windres.exe /fo CMakeFiles\cmTC_863d1.dir/manifest.res CMakeFiles\cmTC_863d1.dir/manifest.rc" failed (exit code 1) with the following output:
+    Usage: C:\MinGW64\mingw64\bin\windres.exe [option(s)] [input-file] [output-file]
+     The options are:
+      -i --input=<file>            Name input file
+      -o --output=<file>           Name output file
+      -J --input-format=<format>   Specify input format
+      -O --output-format=<format>  Specify output format
+      -F --target=<target>         Specify COFF target
+         --preprocessor=<program>  Program to use to preprocess rc file
+         --preprocessor-arg=<arg>  Additional preprocessor argument
+      -I --include-dir=<dir>       Include directory when preprocessing rc file
+      -D --define <sym>[=<val>]    Define SYM when preprocessing rc file
+      -U --undefine <sym>          Undefine SYM when preprocessing rc file
+      -v --verbose                 Verbose - tells you what it's doing
+      -c --codepage=<codepage>     Specify default codepage
+      -l --language=<val>          Set language when reading rc file
+         --use-temp-file           Use a temporary file instead of popen to read
+                                   the preprocessor output
+         --no-use-temp-file        Use popen (default)
+      -r                           Ignored for compatibility with rc
+      @<file>                      Read options from <file>
+      -h --help                    Print this help message
+      -V --version                 Print version information
+    FORMAT is one of rc, res, or coff, and is deduced from the file name
+    extension if not specified.  A single file name is an input file.
+    No input-file is stdin, default rc.  No output-file is stdout, default rc.
+    C:\MinGW64\mingw64\bin\windres.exe: supported targets: pe-x86-64 pei-x86-64 pe-bigobj-x86-64 elf64-x86-64 elf64-l1om elf64-k1om pe-i386 pei-i386 elf32-i386 elf32-iamcu elf64-little elf64-big elf32-little elf32-big srec symbolsrec verilog tekhex binary ihex plugin
+    NMAKE : fatal error U1077: '"C:\Program Files\JetBrains\CLion 2022.2.4\bin\cmake\win\bin\cmake.exe"'á: code retour '0xffffffff'
+    Stop.
+    NMAKE : fatal error U1077: '"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\14.34.31933\bin\HostX86\x64\nmake.exe"'á: code retour '0x2'
+    Stop.
+    
+    
+
+  
+
+  CMake will not be able to correctly generate this project.
+Call Stack (most recent call first):
+  CMakeLists.txt:2 (project)
+
+
+-- Configuring incomplete, errors occurred!
+See also "E:/python projects/PySiDoCast/cmake-build-default-msvc-compiler/CMakeFiles/CMakeOutput.log".
+See also "E:/python projects/PySiDoCast/cmake-build-default-msvc-compiler/CMakeFiles/CMakeError.log".

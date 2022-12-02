@@ -7,7 +7,7 @@ print(compiler)
 
 args = []
 if compiler == 'msvc':
-    args = ["/O2", "/GS-", "/fp:fast", "/std:c++latest", "/Zc:strictStrings-", "/Ob3", "/openmp"]
+    args = ["/O2", "/GS-", "/fp:fast", "/std:c++latest", "/Zc:strictStrings-", "/Ob3"]
 
 
 def main():
