@@ -1,6 +1,9 @@
 .idea/
 build/
 cmake-build-debug/
+cmake-build-default-msvc/
+cmake-build-default-msvc-compiler/
+cmake-build-default-visual-studio/
 dist/
 pysidocast.egg-info/
 CMakeLists.txt
