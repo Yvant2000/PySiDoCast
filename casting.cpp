@@ -1,16 +1,23 @@
 #include <Python.h>
 #define _USE_MATH_DEFINES
 #include <cmath>
-#include <omp.h>
+//#include <omp.h>
+#include <mutex>
+#include <thread>
+#include <queue>
 
-#if defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__)
-    #include <windows.h>
-#elif defined(__apple__) || defined(__MACH__)
-    #error "not implemented for Mac OS X"
-#else  // Linux
-    #include <pthread.h>
-    #warning "Not implemented for this platform yet"
-#endif
+using namespace std;  // I hate cpp and its namespaces
+
+
+//#if defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__)
+//    #include <windows.h>
+//    #include <mutex>
+//#elif defined(__apple__) || defined(__MACH__)
+//    #error "not implemented for Mac OS X"
+//#else  // Linux
+//    #include <pthread.h>
+//    #warning "Not implemented for this platform yet"
+//#endif
 
 //#define EPSILON 0.001f
 
@@ -367,24 +374,75 @@ inline long get_pixel_at(struct Surface *surfaces, struct pos2 ray, float view_d
     return pixel;
 }
 
-DWORD WINAPI thread_worker( LPVOID lpParam )
+
+mutex queue_mutex;  // Allows only one thread to access the queue at a time
+queue<struct thread_args*> args_queue;
+bool thread_quit;
+struct Surface *t_surfaces;
+float t_view_distance;
+Py_ssize_t t_width;
+float t_forward_x;
+float t_forward_z;
+float t_right_x;
+float t_right_z;
+struct vec3 t_A;
+
+struct thread_args {          // a few args the thread needs to compute the pixel
+    unsigned long *buf;      // where to write the pixel
+    float y;
+};
+
+
+void thread_worker()
 {
-    srand(time(NULL));
+    while(true)
+    {
+        queue_mutex.lock();
+        if (args_queue.empty())
+        {
+            queue_mutex.unlock();
+            if (thread_quit)
+                return;
 
-    void **args = (void **)lpParam;
+            this_thread::sleep_for(chrono::microseconds (1));
+            continue;
+        }
 
-    unsigned long *buf = (unsigned long *)args[0];
+        struct thread_args *args = args_queue.front();
+        args_queue.pop();
+        queue_mutex.unlock();
 
-    Surface *surfaces = (Surface *)args[1];
 
-    pos2 *ray_ptr = (pos2 *)args[2];
-    pos2 ray = *ray_ptr;
-    free(ray_ptr);
+        unsigned long *buf = args->buf;
+        float y = args->y;
+        free(args);
 
-    float view_distance = *(float *) args[3];
+        struct pos2 ray;
+        ray.A = t_A;
+        ray.B.y = y;
 
-    free(args);
-//
+
+        float progress_x = 0.5f;
+        float d_progress_x = 1.0f / (float)t_width;
+
+        for (Py_ssize_t dst_x = t_width; dst_x; --dst_x) {
+
+            progress_x -= d_progress_x;
+            // float progress_x = 0.5f - dst_x * d_progress_x;
+
+            ray.B.x = t_forward_x + progress_x * t_right_x;
+            // ray.B.y = y_;
+            ray.B.z = t_forward_z + progress_x * t_right_z;
+
+            long pixel = get_pixel_at(t_surfaces, ray, t_view_distance);
+            if (pixel)
+                *buf = pixel;
+
+            buf++;
+        }
+
+
+    }
 //    printf("THREAD ARGS: \n"
 //    "    buf = %p\n"
 //    "    surfs = %p\n"
@@ -392,29 +450,6 @@ DWORD WINAPI thread_worker( LPVOID lpParam )
 //    "    A - %f %f %f\n"
 //    "    B - %f %f %f\n", buf, surfaces, view_distance, ray.A.x, ray.A.y, ray.A.z, ray.B.x, ray.B.y, ray.B.z);
 
-    long pixel = get_pixel_at(surfaces, ray, view_distance);
-    if (pixel)
-        *buf = pixel;
-
-    ExitThread(0);
-}
-
-
-/*
- * Get the index of a free thread in the thread pool.
- * If no free thread is available, wait for one to become free.
- */
-inline void wait_thread(HANDLE thread) {
-    if (thread == nullptr)
-        return;
-
-    DWORD exit_code;
-    GetExitCodeThread(thread, &exit_code);
-    if (exit_code != STILL_ACTIVE)
-        return;
-
-    WaitForSingleObject(thread, INFINITE);
-    CloseHandle(thread);
 }
 
 
@@ -475,9 +510,6 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
     // It may be confusing because the x_angle move through the y axis,
     // and the y_angle move through the x axis as shown in the diagram.
 
-//    struct pos2 ray;
-//    ray.A = {x, y, z};
-
     Py_ssize_t width = dst_buffer.shape[0];  // width of the screen
     Py_ssize_t height = dst_buffer.shape[1];  // height of the screen
 
@@ -499,78 +531,97 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
     float d_progress_y = 1.f / (float)height;
     float d_progress_x = 1.f / (float)width;
 
-    float progress_y = 0.5f;
-
-
-    HANDLE *threads = (HANDLE *)malloc(sizeof(HANDLE) * thread_count);
-    int thread_index = 0;
-    for (int i = thread_count; i; --i)
-        threads[i] = nullptr;  // init threads to nullptr
 
 //    omp_set_num_threads(thread_count);
-    pos2 ray;
-    ray.A = {x, y, z};
 
+//    struct pos2 ray;
+//    ray.A = {x, y, z};
+
+    t_surfaces = self->surfaces;
+    t_view_distance = view_distance;
+    t_width = width;
+    t_forward_x = forward_x;
+    t_forward_z = forward_z;
+    t_right_x = right_x;
+    t_right_z = right_z;
+    t_A = {x, y, z};
+
+    thread_quit = false;
+    thread **threads = (thread **)malloc(sizeof(thread *) * thread_count);
+    for (int i = thread_count - 1; i >= 0; --i)
+        threads[i] = new thread(thread_worker);
+
+
+    float progress_y = 0.5f;
     for (Py_ssize_t dst_y = height; dst_y; --dst_y) {
 
         progress_y -= d_progress_y;
 //        progress_y = 0.5 - d_progress_y * dst_y;
 
-        // float y_ = forward_y + progress_y * right_y;
-        ray.B.y = forward_y + progress_y * right_y;
+        float y_ = forward_y + progress_y * right_y;
+        // ray.B.y = forward_y + progress_y * right_y;
 
-        float progress_x = 0.5f;
+        // float progress_x = 0.5f;
+
+        struct thread_args *args = (struct thread_args *)malloc(sizeof(struct thread_args));
+
+        args -> buf =  (unsigned long *) ((unsigned char *) (buf) - 2);
+        args -> y = y_;
+
+        queue_mutex.lock();
+        args_queue.push(args);
+        queue_mutex.unlock();
+
+        buf += width;
+
 
 //        #pragma omp parallel for
-        for (Py_ssize_t dst_x = width; dst_x; --dst_x) {
-            wait_thread(threads[thread_index]); // Ensure that the thread is free before using it.
-
-            progress_x -= d_progress_x;
-            // float progress_x = 0.5f - dst_x * d_progress_x;
-
-            ray.B.x = forward_x + progress_x * right_x;
-            // ray.B.y = y_;
-            ray.B.z = forward_z + progress_x * right_z;
+//        for (Py_ssize_t dst_x = width; dst_x; --dst_x) {
 //
-//            long pixel = get_pixel_at(self->surfaces, ray, view_distance);
+//            progress_x -= d_progress_x;
+//            // float progress_x = 0.5f - dst_x * d_progress_x;
 //
-//            if (pixel)   // If the pixel is empty, don't draw it.
-//                *((unsigned long *) ((unsigned char *) (buf) - 2)) = pixel;
-//                // *((unsigned long *) ((unsigned char *) (buf + dst_y * width + dst_x) - 2)) = pixel;
-
-            pos2 *ray_copy = (pos2 *)malloc(sizeof(pos2));
-            *ray_copy = ray;
-
-//            printf("EXPECTED ARGS: \n"
-//                   "    buf = %p\n"
-//                   "    surfs = %p\n"
-//                   "    view_distance = %f\n"
-//                   "    A - %f %f %f\n"
-//                   "    B - %f %f %f\n", (unsigned long *) ((unsigned char *) (buf) - 2), self->surfaces, view_distance, ray.A.x, ray.A.y, ray.A.z, ray.B.x, ray.B.y, ray.B.z);
-
-            void **args = (void **)malloc(sizeof(void *) * 4);
-            args[0] = (unsigned long *) ((unsigned char *) (buf) - 2);
-            args[1] = self->surfaces;
-            args[2] = ray_copy;
-            args[3] = &view_distance;
-
-            threads[thread_index] = CreateThread(NULL, 0, thread_worker, args, 0, NULL);
-
-            thread_index = (thread_index + 1) % thread_count;
-
-            buf++;
-        }
+//            ray.B.x = forward_x + progress_x * right_x;
+//            // ray.B.y = y_;
+//            ray.B.z = forward_z + progress_x * right_z;
+////
+////            long pixel = get_pixel_at(self->surfaces, ray, view_distance);
+////
+////            if (pixel)   // If the pixel is empty, don't draw it.
+////                *((unsigned long *) ((unsigned char *) (buf) - 2)) = pixel;
+////                // *((unsigned long *) ((unsigned char *) (buf + dst_y * width + dst_x) - 2)) = pixel;
+//
+//            struct thread_args *args = (struct thread_args *)malloc(sizeof(struct thread_args));
+//
+//            args -> buf =  (unsigned long *) ((unsigned char *) (buf) - 2);
+//            args -> ray = ray;
+//
+//            queue_mutex.lock();
+//            args_queue.push(args);
+//            queue_mutex.unlock();
+//
+////            printf("EXPECTED ARGS: \n"
+////                   "    buf = %p\n"
+////                   "    surfs = %p\n"
+////                   "    view_distance = %f\n"
+////                   "    A - %f %f %f\n"
+////                   "    B - %f %f %f\n", (unsigned long *) ((unsigned char *) (buf) - 2), self->surfaces, view_distance, ray.A.x, ray.A.y, ray.A.z, ray.B.x, ray.B.y, ray.B.z);
+//
+//            buf++;
+//        }
 
     }
 
-    WaitForMultipleObjects(thread_count, threads, TRUE, INFINITE);
-//    for (int i = thread_count; i; --i)
-//        CloseHandle(threads[i]);
+    thread_quit = true;
 
     PyBuffer_Release(&dst_buffer);
 
     free_temp_surfaces(&(self->surfaces));
 
+    for (int i = thread_count - 1; i >= 0; --i) {
+        threads[i] -> join();
+        delete threads[i];
+    }
     free(threads);
 
     Py_RETURN_NONE;

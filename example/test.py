@@ -15,7 +15,7 @@ caster2 = pysidocast.RayCaster()
 
 infoObject = pygame.display.Info()
 
-mult = 0.04
+mult = 1.
 dim = (infoObject.current_w * mult, infoObject.current_h * mult)
 print(dim)
 unit = 1
@@ -125,7 +125,7 @@ if __name__ == "__main__":
         keys = pygame.key.get_pressed()
         time_stamp = clock.tick(30) / 100
         fps = clock.get_fps()
-        # print(fps)
+        print(fps)
         game_screen.fill((0, 0, 0, 0))
         # print(fps, time_stamp)
         # if fps < 30:
