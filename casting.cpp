@@ -367,6 +367,38 @@ inline long get_pixel_at(struct Surface *surfaces, struct pos2 ray, float view_d
     return pixel;
 }
 
+DWORD WINAPI thread_worker( LPVOID lpParam )
+{
+    srand(time(NULL));
+
+    void **args = (void **)lpParam;
+
+    unsigned long *buf = (unsigned long *)args[0];
+
+    Surface *surfaces = (Surface *)args[1];
+
+    pos2 *ray_ptr = (pos2 *)args[2];
+    pos2 ray = *ray_ptr;
+    free(ray_ptr);
+
+    float view_distance = *(float *) args[3];
+
+    free(args);
+//
+//    printf("THREAD ARGS: \n"
+//    "    buf = %p\n"
+//    "    surfs = %p\n"
+//    "    view_distance = %f\n"
+//    "    A - %f %f %f\n"
+//    "    B - %f %f %f\n", buf, surfaces, view_distance, ray.A.x, ray.A.y, ray.A.z, ray.B.x, ray.B.y, ray.B.z);
+
+    long pixel = get_pixel_at(surfaces, ray, view_distance);
+    if (pixel)
+        *buf = pixel;
+
+    ExitThread(0);
+}
+
 
 /*
  * Get the index of a free thread in the thread pool.
@@ -377,11 +409,12 @@ inline void wait_thread(HANDLE thread) {
         return;
 
     DWORD exit_code;
-    GetExitCodeThread(thread, &exit_code)
+    GetExitCodeThread(thread, &exit_code);
     if (exit_code != STILL_ACTIVE)
         return;
 
     WaitForSingleObject(thread, INFINITE);
+    CloseHandle(thread);
 }
 
 
@@ -412,6 +445,11 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
     }
     if (view_distance <= 0.f) {
         PyErr_SetString(PyExc_ValueError, "view_distance must be greater than 0");
+        return NULL;
+    }
+
+    if (thread_count < 1) {
+        PyErr_SetString(PyExc_ValueError, "thread_count must be greater than 0");
         return NULL;
     }
 
@@ -471,6 +509,8 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
 
 //    omp_set_num_threads(thread_count);
     pos2 ray;
+    ray.A = {x, y, z};
+
     for (Py_ssize_t dst_y = height; dst_y; --dst_y) {
 
         progress_y -= d_progress_y;
@@ -485,31 +525,47 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
         for (Py_ssize_t dst_x = width; dst_x; --dst_x) {
             wait_thread(threads[thread_index]); // Ensure that the thread is free before using it.
 
-            ray.A = {x, y, z};
-
             progress_x -= d_progress_x;
             // float progress_x = 0.5f - dst_x * d_progress_x;
 
             ray.B.x = forward_x + progress_x * right_x;
             // ray.B.y = y_;
             ray.B.z = forward_z + progress_x * right_z;
+//
+//            long pixel = get_pixel_at(self->surfaces, ray, view_distance);
+//
+//            if (pixel)   // If the pixel is empty, don't draw it.
+//                *((unsigned long *) ((unsigned char *) (buf) - 2)) = pixel;
+//                // *((unsigned long *) ((unsigned char *) (buf + dst_y * width + dst_x) - 2)) = pixel;
 
-            long pixel = get_pixel_at(self->surfaces, ray, view_distance);
+            pos2 *ray_copy = (pos2 *)malloc(sizeof(pos2));
+            *ray_copy = ray;
 
-            if (pixel)   // If the pixel is empty, don't draw it.
-                *((unsigned long *) ((unsigned char *) (buf) - 2)) = pixel;
-                // *((unsigned long *) ((unsigned char *) (buf + dst_y * width + dst_x) - 2)) = pixel;
+//            printf("EXPECTED ARGS: \n"
+//                   "    buf = %p\n"
+//                   "    surfs = %p\n"
+//                   "    view_distance = %f\n"
+//                   "    A - %f %f %f\n"
+//                   "    B - %f %f %f\n", (unsigned long *) ((unsigned char *) (buf) - 2), self->surfaces, view_distance, ray.A.x, ray.A.y, ray.A.z, ray.B.x, ray.B.y, ray.B.z);
 
-            void *args[] = {*((unsigned long *) ((unsigned char *) (buf) - 2)), self->surfaces, &ray, &view_distance};
+            void **args = (void **)malloc(sizeof(void *) * 4);
+            args[0] = (unsigned long *) ((unsigned char *) (buf) - 2);
+            args[1] = self->surfaces;
+            args[2] = ray_copy;
+            args[3] = &view_distance;
 
-            threads[thread_index] = CreateThread(NULL, 0, ..., &args, 0, NULL);
+            threads[thread_index] = CreateThread(NULL, 0, thread_worker, args, 0, NULL);
 
-            thread_index++;
+            thread_index = (thread_index + 1) % thread_count;
 
-            buf ++;
+            buf++;
         }
 
     }
+
+    WaitForMultipleObjects(thread_count, threads, TRUE, INFINITE);
+//    for (int i = thread_count; i; --i)
+//        CloseHandle(threads[i]);
 
     PyBuffer_Release(&dst_buffer);
 
