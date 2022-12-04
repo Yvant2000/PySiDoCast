@@ -15,7 +15,7 @@ caster2 = pysidocast.RayCaster()
 
 infoObject = pygame.display.Info()
 
-mult = 1.
+mult = 0.4
 dim = (infoObject.current_w * mult, infoObject.current_h * mult)
 print(dim)
 unit = 1
@@ -26,9 +26,6 @@ image = pygame.image.load(".\\example\\bg.png").convert_alpha()
 transp = pygame.image.load(".\\example\\transp.png").convert_alpha()
 transp2 = pygame.image.load(".\\example\\transp2.png").convert_alpha()
 transp3 = pygame.image.load(".\\example\\transp3.png").convert_alpha()
-
-# caster.add_light(0, 0, unit/2, unit * 2, 0.5, 0.3, 0.2)
-# caster.add_light(unit, unit * 2, 0, unit, 0.2, 0.2, 0.8,direction_x=unit*0.75,direction_y=0, direction_z=unit*0.25)
 
 caster.add_surface(transp,
                    unit, 2 * unit, 2 * unit,
@@ -55,13 +52,13 @@ caster.add_surface(image,
 caster.add_surface(transp3,
                    -unit, 2*unit, 0,
                    unit, 2*unit, 0,
-                   -unit, 0, 0)
+                   -unit, 0, 0,)
 
 caster.add_surface(transp3,
                    unit, 0, 0,
                    -unit, 0, 0,
                    unit, 2*unit, 0,
-                   reverse=True)
+                   reverse=True,)
 
 caster.add_surface(transp2,
                    -unit, 2*unit, 0,
@@ -184,26 +181,20 @@ if __name__ == "__main__":
         elif keys[pygame.K_LSHIFT]:
             y -= time_stamp * speed
 
-        # (caster if time % 2 else caster2).raycasting(screen,
-        #                                              x, y, z,
-        #                                              x_angle, y_angle,
-        #                                              step=1,
-        #                                              fov=60)
-
         caster.clear_lights()
 
-        # caster.add_light(
-        #                  x, y, z,
-        #                  view_distance, 0.5, 0.6, 0.7,
-        #                  direction_x=x + cos(radians(y_angle)) * view_distance * 1.8,
-        #                  direction_y=y + sin(radians(x_angle)) * view_distance * 1.8,
-        #                  direction_z=z + sin(radians(y_angle)) * view_distance * 1.8,
-        #                  )
-        # caster.add_light(0, 0, unit/2, unit * 2, 0.5, 0.3, 0.2)
-        #
-        # caster.add_light(cos(spot) * unit, unit * 2, unit + sin(spot) * unit,
-        #                  unit*3, 0.3, 0.3, 1.0,
-        #                  direction_x=unit * sin(spot), direction_y=-3*unit, direction_z= unit + cos(spot) * unit)
+        caster.add_light(
+                         x, y, z,
+                         view_distance, 0.5, 0.6, 0.7,
+                         direction_x=x + cos(radians(y_angle)) * view_distance * 1.8,
+                         direction_y=y + sin(radians(x_angle)) * view_distance * 1.8,
+                         direction_z=z + sin(radians(y_angle)) * view_distance * 1.8,
+                         )
+        caster.add_light(0, 0, unit/2, unit * 2, 0.5, 0.3, 0.2)
+
+        caster.add_light(cos(spot) * unit, unit * 2, unit + sin(spot) * unit,
+                         unit*3, 0.3, 0.3, 1.0,
+                         direction_x=unit * sin(spot), direction_y=-3*unit, direction_z= unit + cos(spot) * unit)
 
         spot += 0.02
 

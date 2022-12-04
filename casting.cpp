@@ -66,21 +66,32 @@ struct pos3 {
     vec3 C;
 };
 
-
+///
+/// \brief The Light struct represents a light source in the scene.
 struct Light {
-    // TODO
+    vec3 pos;  // Position of the light in the scene
+    vec3 direction;  // Direction of the light in the scene
+    float pos_direction_distance;  // Distance between the light and the direction
+    float intensity; // Intensity of the light (= the distance of lightning)
+    float r; // Red component of the light
+    float g; // Green component of the light
+    float b; // Blue component of the light
+    struct Light *next;  // Next light in the list
+    // TODO: Might add an intensity offset to simulate cel shading
 };
 
 ///
 /// \brief The Surface struct representing a surface in the scene
 struct Surface {
+    Py_buffer buffer; // The buffer of the surface
+    struct pos3 pos;  // The position of the 3 points of the triangle
     struct Surface *next; // linked list
     PyObject *parent;  // The python object that owns this surface
-    struct pos3 pos;  // The position of the 3 points of the triangle
-    Py_buffer buffer; // The buffer of the surface
     bool del;  // If the Surface is temporary and needs to be deleted
     bool reverse;  // If the surface texture is reversed (useful for rectangles)
+    // TODO : Might add a transparency value for fast alpha blending
 };
+
 
 /// Free a surface object
 /// \param surface The surface to free
@@ -217,12 +228,12 @@ static PyObject *method_add_surface(RayCasterObject *self, PyObject *args, PyObj
     bool del = false;
     bool reverse = false;
 
-    static char *kwlist[] = {"image", "A_x", "A_y", "A_z", "B_x", "B_y", "B_z","C_x", "C_y", "C_z", "rm", "reverse", NULL};
+    static char *kwlist[] = {"image", "A_x", "A_y", "A_z", "B_x", "B_y", "B_z","C_x", "C_y", "C_z","rm", "reverse", NULL};
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Offfffffff|pp", kwlist,
                                      &surface_image, &A_x, &A_y, &A_z, &B_x, &B_y, &B_z, &C_x, &C_y, &C_z, &del, &reverse))
         return NULL;
 
-    struct Surface *surface = (Surface *) malloc(sizeof(struct Surface));
+    struct Surface *surface = (struct Surface *) malloc(sizeof(struct Surface));
     surface->pos.A.x = A_x;
     surface->pos.A.y = A_y;
     surface->pos.A.z = A_z;
@@ -252,8 +263,52 @@ static PyObject *method_add_surface(RayCasterObject *self, PyObject *args, PyObj
 
 
 static PyObject *method_add_light(RayCasterObject *self, PyObject *args, PyObject *kwargs) {
+    float light_x;
+    float light_y;
+    float light_z;
 
-    // TODO
+    float light_intensity = 1.0;
+
+    float red = 1.0;  // white by default
+    float green = 1.0;
+    float blue = 1.0;
+
+    float direction_x = FP_NAN;  // default value for non directional lights
+    float direction_y = FP_NAN;
+    float direction_z = FP_NAN;
+
+    static char *kwlist[] = {"x", "y", "z", "intensity", "red", "green", "blue", "direction_x", "direction_y", "direction_z", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "fff|fffffff", kwlist, &light_x, &light_y, &light_z, &light_intensity,
+                                     &red, &green, &blue, &direction_x, &direction_y, &direction_z))
+        return NULL;
+
+    if (red > 1.0f)  // clamp the color values
+        red = 1.0f;
+    if (green > 1.0f)
+        green = 1.0f;
+    if (blue > 1.0f)
+        blue = 1.0f;
+
+    struct Light *light = (struct Light *) malloc(sizeof(struct Light));
+    light->pos.x = light_x;
+    light->pos.y = light_y;
+    light->pos.z = light_z;
+    light->intensity = light_intensity;
+    light->r = red;
+    light->g = green;
+    light->b = blue;
+    light->direction.x = direction_x;
+    light->direction.y = direction_y;
+    light->direction.z = direction_z;
+    light->next = self->lights;
+
+    self->use_lighting = true;
+    self->lights = light;
+
+    self->lights->pos_direction_distance = FP_NAN;
+    if (direction_x != FP_NAN && direction_y != FP_NAN && direction_z != FP_NAN)
+        self->lights->pos_direction_distance = vec3_dist(self->lights->pos, self->lights->direction);
+
     Py_RETURN_NONE;
 }
 
@@ -269,15 +324,20 @@ static PyObject *method_clear_surfaces(RayCasterObject *self) {
     Py_RETURN_NONE;
 }
 
+/// Free all the lights in the raycaster
+/// \param self  The raycaster object
+/// \return (Python) None
 static PyObject *method_clear_lights(RayCasterObject *self) {
-    // TODO
+    struct Light *next;
+    for (struct Light *light = self->lights; light != nullptr; light = next) {
+        next = light->next;
+        free(light);
+    }
+    self->lights = nullptr;
+    self->use_lighting = false;
     Py_RETURN_NONE;
 }
 
-/*
- *
- *
- */
 
 /// When the function returns true, the intersection point is given by R.Origin + t * R.Dir
 /// The barycentric coordinates of the intersection in the triangle are u, v, 1-u-v (useful for Gouraud shading or texture mapping)
@@ -289,59 +349,42 @@ static PyObject *method_clear_lights(RayCasterObject *self) {
 /// \param v baricentric coordinate
 /// \return true if the ray intersects the triangle, false otherwise
 inline bool segment_triangle_intersect(pos2 segment, pos3 triangle, float closest, float *dist, float *u, float *v) {
-    // TODO try to optimize this
-
     vec3 E1 = vec3_sub(triangle.B, triangle.A);
     vec3 E2 = vec3_sub(triangle.C, triangle.A);
-//    vec3 N = vec3_cross(E1, E2);
+    // vec3 N = vec3_cross(E1, E2);
 
-//    vec3 N = {E1.y * E2.z - E1.z * E2.y,
-//              E1.z * E2.x - E1.x * E2.z,
-//              E1.x * E2.y - E1.y * E2.x};
-
-    // For some reason the above code is slower than the below code.
+    // For some reason the above commented code is slower than this code.
     vec3 N = {(triangle.B.y - triangle.A.y) * (triangle.C.z - triangle.A.z) - (triangle.B.z - triangle.A.z) * (triangle.C.y - triangle.A.y),
               (triangle.B.z - triangle.A.z) * (triangle.C.x - triangle.A.x) - (triangle.B.x - triangle.A.x) * (triangle.C.z - triangle.A.z),
               (triangle.B.x - triangle.A.x) * (triangle.C.y - triangle.A.y) - (triangle.B.y - triangle.A.y) * (triangle.C.x - triangle.A.x)};
 
 
     float det = -vec3_dot(segment.B, N);
-//    float det = -(segment.B.x * ((triangle.B.y - triangle.A.y) * (triangle.C.z - triangle.A.z) - (triangle.B.z - triangle.A.z) * (triangle.C.y - triangle.A.y))
-//            + segment.B.y * ((triangle.B.z - triangle.A.z) * (triangle.C.x - triangle.A.x) - (triangle.B.x - triangle.A.x) * (triangle.C.z - triangle.A.z))
-//            + segment.B.z * ((triangle.B.x - triangle.A.x) * (triangle.C.y - triangle.A.y) - (triangle.B.y - triangle.A.y) * (triangle.C.x - triangle.A.x)));
-
-
-//    float inv_det = 1.0f / (
-//            segment.B.x * (triangle.B.y - triangle.A.y) * (triangle.C.z - triangle.A.z) - segment.B.x * (triangle.B.z - triangle.A.z) * (triangle.C.y - triangle.A.y)
-//            + segment.B.y * (triangle.B.z - triangle.A.z) * (triangle.C.x - triangle.A.x) - segment.B.y * (triangle.B.x - triangle.A.x) * (triangle.C.z - triangle.A.z)
-//            + segment.B.z * (triangle.B.x - triangle.A.x) * (triangle.C.y - triangle.A.y) - segment.B.z * (triangle.B.y - triangle.A.y) * (triangle.C.x - triangle.A.x)
-//            );
 
     vec3 AO = vec3_sub(segment.A, triangle.A);
     *dist = vec3_dot(AO, N) / det;
-//    *dist = ((segment.A.x - triangle.A.x) * ((triangle.B.y - triangle.A.y) * (triangle.C.z - triangle.A.z) - (triangle.B.z - triangle.A.z) * (triangle.C.y - triangle.A.y))
-//            + (segment.A.y - triangle.A.y) * ((triangle.B.z - triangle.A.z) * (triangle.C.x - triangle.A.x) - (triangle.B.x - triangle.A.x) * (triangle.C.z - triangle.A.z))
-//            + (segment.A.z - triangle.A.z) * ((triangle.B.x - triangle.A.x) * (triangle.C.y - triangle.A.y) - (triangle.B.y - triangle.A.y) * (triangle.C.x - triangle.A.x))
-//            ) / det;
 
-    if (*dist < 0 || *dist >= closest)  // The test "*dist < 0" prevent the camera to enter the dark dimension mirror dimension
+    if (*dist < 0 || *dist >= closest)  // The test "*dist < 0" prevent the camera to enter the dark mirror dimension
         return false;
 
     vec3 DAO = vec3_cross(AO, segment.B);
-//    vec3 DAO = {AO.y * segment.B.z - AO.z * segment.B.y,
-//                AO.z * segment.B.x - AO.x * segment.B.z,
-//                AO.x * segment.B.y - AO.y * segment.B.x};
 
     *u = vec3_dot(E2, DAO) / det;
-    if (*u < 0)  // prevent the surfaces from being stretched to infinity
+    if (*u < 0)  // prevent the surfaces from being stretched to infinity (causes a crash)
         return false;
 
     *v = -vec3_dot(E1, DAO) / det;
 
-    return (*v >= 0. && (*u + *v) <= 1.0);  // prevent the surfaces from being stretched to infinity
+    return (*v >= 0. && (*u + *v) <= 1.0);  // prevent the surfaces from being stretched to infinity (causes a crash)
     // -vec3_dot(dir, N) >= EPSILON // prevent the surfaces from being seen from behind
 }
 
+
+/// Gets the color of a pixel on a surface at the given coordinates
+/// \param buffer py_buffer object containing the surface datar
+/// \param u baricentric coordinate of the pixel on the surface
+/// \param v baricentric coordinate of the pixel on the surface
+/// \return pointer to the pixel color
 inline unsigned char *get_pixel_from_buffer(Py_buffer *buffer, float u, float v) {
     Py_ssize_t width = buffer -> shape[0];
     Py_ssize_t height = buffer -> shape[1];
@@ -354,23 +397,43 @@ inline unsigned char *get_pixel_from_buffer(Py_buffer *buffer, float u, float v)
     return ((unsigned char*) pixel) - 2;
 }
 
+inline float line_point_distance(vec3 point, vec3 line_point, vec3 line_direction) {
+    vec3 s = vec3_sub(line_direction, line_point);
+    vec3 w = vec3_sub(point, line_point);
+    float ps = vec3_dot(w, s);
 
-inline long get_pixel_at(struct Surface *surfaces, struct pos2 ray, float view_distance) {
+    if (ps <= 0)
+        return vec3_length(w);
+
+    float l2 = vec3_dot(s, s);
+    if (ps >= l2)
+        return vec3_length(vec3_sub(point, line_direction));
+
+    return vec3_length(vec3_sub(point, vec3_add(line_point, vec3_dot_float(s, ps / l2))));
+}
+
+/// Compute the intersection between a ray and the surfaces in the raycaster and return the color of the pixel
+/// \param surfaces surfaces in the scene
+/// \param ray ray to cast
+/// \param view_distance render distance
+/// \return pixel color
+inline long get_pixel_at(struct Surface *surfaces, struct Light *lights, struct pos2 ray, float view_distance, bool use_lighting) {
     float closest = view_distance;
-    long pixel = 0;
     unsigned char *closest_pixel_ptr = nullptr;
     float dist;
     float u;
     float v;
 
     for (; surfaces != nullptr; surfaces = surfaces->next) {
+
         if (!segment_triangle_intersect(ray, surfaces->pos, closest, &dist, &u, &v))
             continue;
 
-        if (surfaces->reverse) {
+        if (surfaces->reverse) {  // reverse the texture if needed
             u = 1.0f - u;
             v = 1.0f - v;
         }
+
         unsigned char *new_pixel_ptr = get_pixel_from_buffer(&surfaces->buffer, u, v);
         if (new_pixel_ptr[ALPHA]) {
             closest = dist;
@@ -381,6 +444,8 @@ inline long get_pixel_at(struct Surface *surfaces, struct pos2 ray, float view_d
     if (closest_pixel_ptr == nullptr)
         return 0;
 
+    long pixel = 0;
+
     float ratio = 1.0f - (closest / view_distance);
     unsigned char *pixel_ptr = (unsigned char *)&pixel;
     pixel_ptr[BLUE] = (unsigned char)(closest_pixel_ptr[BLUE] * ratio);
@@ -388,21 +453,63 @@ inline long get_pixel_at(struct Surface *surfaces, struct pos2 ray, float view_d
     pixel_ptr[RED] = (unsigned char)(closest_pixel_ptr[RED] * ratio);
     // pixel_ptr[ALPHA] = new_pixel_ptr[ALPHA];
 
+    if (use_lighting && pixel) {  // apply lights
+        float red = 0.0f;
+        float green = 0.0f;
+        float blue = 0.0f;
+        vec3 inter = vec3_add(ray.A, vec3_dot_float(ray.B, closest));
+        for (struct Light* temp_light = lights; temp_light != nullptr; temp_light = temp_light->next) {
+            float dist = vec3_dist(temp_light->pos, inter);  // distance between the light and the intersection
+            float ratio;
+            if (temp_light->pos_direction_distance == FP_NAN)  // if the light is a radial light, calculate the ratio
+                ratio = dist / temp_light->intensity;
+            else {  // if the light is a directional light, calculate the ratio
+                float dist2 = line_point_distance(inter, temp_light->pos, temp_light->direction);  // distance between the direction and the intersection
+                ratio = (dist2*temp_light->pos_direction_distance) / (dist*temp_light->intensity);
+            }
+
+            if (ratio < 1.0f) {  // ratio > 1 means the light is too far away, we don't see anything
+                float temp = 1.0f - ratio;
+                red += temp * temp_light->r;
+                green += temp * temp_light->g;
+                blue += temp * temp_light->b;
+            }
+        }
+        // Prevent the pixel from being too bright
+        if (red > 1.0f)
+            red = 1.0f;
+        if (green > 1.0f)
+            green = 1.0f;
+        if (blue > 1.0f)
+            blue = 1.0f;
+
+        pixel_ptr[BLUE] = (unsigned char)(pixel_ptr[BLUE] * blue);
+        pixel_ptr[GREEN] = (unsigned char)(pixel_ptr[GREEN] * green);
+        pixel_ptr[RED] = (unsigned char)(pixel_ptr[RED] * red);
+    }
+
     return pixel;
 }
 
 
+// SHARED DATA
+// (not so pretty, but it works)
+// I store here all the data and shit that will be shared across all the threads
+
 mutex queue_mutex;  // Allows only one thread to access the queue at a time
-queue<struct thread_args*> args_queue;
-bool thread_quit;
-struct Surface *t_surfaces;
-float t_view_distance;
-Py_ssize_t t_width;
-float t_forward_x;
-float t_forward_z;
-float t_right_x;
-float t_right_z;
-struct vec3 t_A;
+queue<struct thread_args*> args_queue;  // Queue of data that is NOT shared between threads
+bool thread_quit;   // Tells the threads to quit once they are done with their current task
+struct Surface *t_surfaces; // List of all the surfaces in the current scene
+struct Light *t_lights; // List of all the lights in the current scene
+bool t_use_lighting; // Tells the threads if they should use lighting or not
+float t_view_distance;  // View distance of the current scene
+Py_ssize_t t_width;  // width of the current screen (for some reason we don't need the height)
+float t_forward_x;  // I don't remember what this is, but it's used in the ray calculation
+float t_forward_z;  // No idea
+float t_right_x;    // i forgor 💀
+float t_right_z;    // Don't touch this anyway
+struct vec3 t_A;    // This is the position of the camera (i rember 😁)
+
 
 struct thread_args {          // a few args the thread needs to compute the pixel
     unsigned long *buf;      // where to write the pixel
@@ -451,7 +558,7 @@ void thread_worker()
             // ray.B.y = y_;
             ray.B.z = t_forward_z + progress_x * t_right_z;
 
-            long pixel = get_pixel_at(t_surfaces, ray, t_view_distance);
+            long pixel = get_pixel_at(t_surfaces, t_lights, ray, t_view_distance, t_use_lighting);
             if (pixel)
                 *buf = pixel;
 
@@ -517,15 +624,15 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
         fov = fov * (float)M_PI / 180.f;
     }
 
-    // x_angle is the angle of the ray around the x axis.
-    // y_angle is the angle of the ray around the y axis.
+    // x_angle is the angle of the ray around the x-axis.
+    // y_angle is the angle of the ray around the y-axis.
     /*    y
         < | >   Λ
     ------ ------ x
           |     V
     */
-    // It may be confusing because the x_angle move through the y axis,
-    // and the y_angle move through the x axis as shown in the diagram.
+    // It may be confusing because the x_angle move through the y-axis,
+    // and the y_angle move through the x-axis as shown in the diagram.
 
     Py_ssize_t width = dst_buffer.shape[0];  // width of the screen
     Py_ssize_t height = dst_buffer.shape[1];  // height of the screen
@@ -546,14 +653,16 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
     float right_z = forward_x * projection_plane_width;
 
     float d_progress_y = 1.f / (float)height;
-    float d_progress_x = 1.f / (float)width;
+//    float d_progress_x = 1.f / (float)width;
 
 //    struct pos2 ray;
 //    ray.A = {x, y, z};
 
-    // shared data between threads
+    // SHARED DATA between threads
     // all shared data have a t_ prefix
     t_surfaces = self->surfaces;
+    t_lights = self->lights;
+    t_use_lighting = self->use_lighting;
     t_view_distance = view_distance;
     t_width = width;
     t_forward_x = forward_x;
@@ -565,7 +674,7 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
     thread_quit = false;
     thread **threads = (thread **)malloc(sizeof(thread *) * thread_count);
     for (int i = thread_count - 1; i >= 0; --i)
-        threads[i] = new thread(thread_worker);
+        threads[i] = new thread(thread_worker);  // C++ threads 💀 (pthreads ? never heard of them.)
 
 
     float progress_y = 0.5f;
@@ -574,39 +683,19 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
         progress_y -= d_progress_y;
 //        progress_y = 0.5 - d_progress_y * dst_y;
 
-        // ray.B.y = forward_y + progress_y * right_y;
+        // ray.B.y = forward_y + progress_y * right_y; // computed once for each thread
 
-        // float progress_x = 0.5f;
 
         struct thread_args *args = (struct thread_args *)malloc(sizeof(struct thread_args));
 
         args -> buf =  (unsigned long *) ((unsigned char *) (buf) - 2);
         args -> y = forward_y + progress_y * right_y;
 
-        queue_mutex.lock();
-        args_queue.push(args);  // push the arguments to the queue
+        queue_mutex.lock(); // mandatory lock
+        args_queue.push(args);
         queue_mutex.unlock();
 
         buf += width;
-
-
-//        for (Py_ssize_t dst_x = width; dst_x; --dst_x) {
-//
-//            progress_x -= d_progress_x;
-//            // float progress_x = 0.5f - dst_x * d_progress_x;
-//
-//            ray.B.x = forward_x + progress_x * right_x;
-//            // ray.B.y = y_;
-//            ray.B.z = forward_z + progress_x * right_z;
-//
-//            long pixel = get_pixel_at(self->surfaces, ray, view_distance);
-//
-//            if (pixel)   // If the pixel is empty, don't draw it.
-//                *((unsigned long *) ((unsigned char *) (buf) - 2)) = pixel;
-//                // *((unsigned long *) ((unsigned char *) (buf + dst_y * width + dst_x) - 2)) = pixel;
-//            buf++;
-//        }
-
     }
 
     thread_quit = true;
@@ -625,16 +714,67 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
 }
 
 
-/*
- *  compute a single raycast and return the position in space of the closest intersection.
- */
-static PyObject *method_single_cast(RayCasterObject *self, PyObject *args, PyObject *kwargs) {
+float get_closest_intersection(pos2 ray, float max_distance, struct Surface *surfaces) {
+    float closest = max_distance;
+    float dist;
+    float u;
+    float v;
 
-    // TODO
-    Py_RETURN_NONE;
+    for (; surfaces != nullptr; surfaces = surfaces->next) {
+
+        if (!segment_triangle_intersect(ray, surfaces->pos, closest, &dist, &u, &v))
+            continue;
+
+        unsigned char *new_pixel_ptr = get_pixel_from_buffer(&surfaces->buffer, u, v);
+        if (new_pixel_ptr[ALPHA])
+            closest = dist;
+    }
+
+    return closest;
 }
 
+/// Compute a single raycast and return the distance from the ray origin to the closest intersection.
+/// If no intersection is found, return the max_distance.
+/// \param self     the raycaster object
+/// \param args     the position arguments
+/// \param kwargs   the keyword arguments
+/// \return         the distance to the closest intersection. The exact position can be computed by multiplying the returned distance by the direction vector.
+static PyObject *method_single_cast(RayCasterObject *self, PyObject *args, PyObject *kwargs) {
+    float origin_x = 0.f;
+    float origin_y = 0.f;
+    float origin_z = 0.f;
 
+    float angle_x = 0.f;
+    float angle_y = 0.f;
+
+    float max_distance = 1000.f;
+
+    bool rad = false;
+
+    static char *kwlist[] = {"x", "y", "z", "angle_x", "angle_y", "max_distance", "rad", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|ffffffp", kwlist,
+                                     &origin_x, &origin_y, &origin_z, &angle_x, &angle_y, &max_distance, &rad))
+        return NULL;
+
+    if (max_distance <= 0.f) {
+        PyErr_SetString(PyExc_ValueError, "max_distance must be greater than 0");
+        return NULL;
+    }
+
+    if (!rad) { // If the given angles are in degrees, convert them to radians.
+        angle_x = angle_x * (float)M_PI / 180.f;
+        angle_y = angle_y * (float)M_PI / 180.f;
+    }
+
+    struct pos2 ray;
+    ray.A = {origin_x, origin_y, origin_z};
+    ray.B = {cosf(angle_y) * max_distance, sinf(angle_x) * max_distance, sinf(angle_y) * max_distance};
+
+    return Py_BuildValue("f", get_closest_intersection(ray, max_distance, self->surfaces));
+}
+
+/// Destructor of the raycaster object.
+/// \param self    the raycaster object
 void RayCaster_dealloc(RayCasterObject *self) {
     struct Surface *next;
     for (struct Surface *surface = self->surfaces; surface != nullptr; surface = next) {
@@ -694,5 +834,3 @@ PyMODINIT_FUNC PyInit_pysidocast(void) {
 
     return m;
 }
-
-#pragma clang diagnostic pop
