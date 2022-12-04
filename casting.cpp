@@ -1,23 +1,11 @@
 #include <Python.h>
 #define _USE_MATH_DEFINES
 #include <cmath>
-//#include <omp.h>
 #include <mutex>
 #include <thread>
 #include <queue>
 
 using namespace std;  // I hate cpp and its namespaces
-
-
-//#if defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__)
-//    #include <windows.h>
-//    #include <mutex>
-//#elif defined(__apple__) || defined(__MACH__)
-//    #error "not implemented for Mac OS X"
-//#else  // Linux
-//    #include <pthread.h>
-//    #warning "Not implemented for this platform yet"
-//#endif
 
 //#define EPSILON 0.001f
 
@@ -26,19 +14,12 @@ using namespace std;  // I hate cpp and its namespaces
 #define GREEN 1
 #define BLUE 0
 
-//#define P_RED 3
-//#define P_GREEN 2
-//#define P_BLUE 1
-//#define P_ALPHA 0
-
-//#define MIN(a, b) ((a) < (b) ? (a) : (b))
-//#define MAX(a, b) ((a) > (b) ? (a) : (b))
 
 typedef struct t_RayCasterObject{
-    PyObject_HEAD
-    struct Surface *surfaces = nullptr;
-    struct Light *lights = nullptr;
-    bool use_lighting = false;
+    PyObject_HEAD           // required python object header
+    struct Surface *surfaces = nullptr;     // List of surfaces
+    struct Light *lights = nullptr;         // List of lights
+    bool use_lighting = false;              // Use lighting or not
 } RayCasterObject;
 
 typedef struct vec3 {
@@ -90,23 +71,27 @@ struct Light {
     // TODO
 };
 
-
+///
+/// \brief The Surface struct representing a surface in the scene
 struct Surface {
     struct Surface *next; // linked list
     PyObject *parent;  // The python object that owns this surface
     struct pos3 pos;  // The position of the 3 points of the triangle
     Py_buffer buffer; // The buffer of the surface
-    bool del;  // If the Surface is temporary
+    bool del;  // If the Surface is temporary and needs to be deleted
     bool reverse;  // If the surface texture is reversed (useful for rectangles)
 };
 
+/// Free a surface object
+/// \param surface The surface to free
 inline void free_surface(struct Surface *surface) {
     PyBuffer_Release(&surface->buffer);
-//    free(surface->buffer);
     Py_DECREF(surface->parent);
     free(surface);
 }
 
+/// Free temporary surfaces in the list
+/// \param surfaces The list of surfaces
 inline void free_temp_surfaces(struct Surface **surfaces) {
     struct Surface *prev = nullptr;
     struct Surface *next;
@@ -123,56 +108,70 @@ inline void free_temp_surfaces(struct Surface **surfaces) {
     }
 }
 
-
+/// Sum two vectors
+/// \param a
+/// \param b
+/// \return a + b
 inline vec3 vec3_add(vec3 a, vec3 b) {
     vec3 result = {a.x + b.x, a.y + b.y, a.z + b.z};
     return result;
 }
 
-/*
- * A - B
- */
+/// Subtract two vectors
+/// \param a
+/// \param b
+/// \return a - b
 inline vec3 vec3_sub(vec3 a, vec3 b) {
     vec3 result = {a.x - b.x, a.y - b.y, a.z - b.z};
     return result;
 }
 
+/// Dot product of two vectors
+/// \param a : vector(3)
+/// \param b : vector(3)
+/// \return a . b : scalar
 inline float vec3_dot(vec3 a, vec3 b) {
     return a.x * b.x + a.y * b.y + a.z * b.z;
 }
 
+/// Multiply a vector by a scalar
+/// \param a : vector(3)
+/// \param b : scalar(1)
+/// \return a * b : vector(3)
 inline vec3 vec3_dot_float(vec3 a, float b) {
     vec3 result = {a.x * b, a.y * b, a.z * b};
     return result;
 }
 
+/// Cross product of two vectors
+/// \param a
+/// \param b
+/// \return a x b
 inline vec3 vec3_cross(vec3 a, vec3 b) {
     return {a.y * b.z - a.z * b.y,
             a.z * b.x - a.x * b.z,
             a.x * b.y - a.y * b.x};
 }
 
+/// Normalize a vector
+/// \param a : vector(3)
+/// \return |a| : scalar
 inline float vec3_length(vec3 a) {
     return sqrtf(a.x * a.x + a.y * a.y + a.z * a.z);
 }
 
+/// Compute distance between two points
+/// \param a : vector(3)
+/// \param b : vector(3)
+/// \return |a - b| : scalar
 inline float vec3_dist(vec3 dot1, vec3 dot2) {
     return sqrtf(powf(dot1.x - dot2.x, 2) + powf(dot1.y - dot2.y, 2) + powf(dot1.z - dot2.z, 2));
 }
 
-inline void get_norm_of_plane(vec3 A, vec3 B, vec3 C, vec3 *norm) {
-
-    vec3 AC = vec3_sub(A, C);
-    vec3 BC = vec3_sub(B, C);
-
-    *norm = vec3_cross(AC, BC);
-}
-
-
-
-
-
-
+/// gets the py_buffer from a pygame surface
+/// \param img pygame surface
+/// \param buffer the buffer from the image
+/// \return true on error, false on success
 inline bool _get_3DBuffer_from_Surface(PyObject *img, Py_buffer *buffer) {
     PyObject * get_view_method = PyObject_GetAttrString(img, "get_view");
     if (get_view_method == NULL) {
@@ -195,8 +194,11 @@ inline bool _get_3DBuffer_from_Surface(PyObject *img, Py_buffer *buffer) {
     return false;
 }
 
-
-
+/// Add a surface to the list of surfaces in the raycaster
+/// \param self The raycaster object
+/// \param args The position arguments passed to the function
+/// \param kwargs The keyword arguments passed to the function
+/// \return (Python) None
 static PyObject *method_add_surface(RayCasterObject *self, PyObject *args, PyObject *kwargs) {
     PyObject *surface_image;
 
@@ -248,12 +250,16 @@ static PyObject *method_add_surface(RayCasterObject *self, PyObject *args, PyObj
     Py_RETURN_NONE;
 }
 
+
 static PyObject *method_add_light(RayCasterObject *self, PyObject *args, PyObject *kwargs) {
 
     // TODO
     Py_RETURN_NONE;
 }
 
+/// Free all the surfaces in the raycaster
+/// \param self  The raycaster object
+/// \return (Python) None
 static PyObject *method_clear_surfaces(RayCasterObject *self) {
     struct Surface *next;
     for (struct Surface *surface = self->surfaces; surface != nullptr; surface = next) {
@@ -269,9 +275,19 @@ static PyObject *method_clear_lights(RayCasterObject *self) {
 }
 
 /*
- * When the function returns true, the intersection point is given by R.Origin + t * R.Dir.
- * The barycentric coordinates of the intersection in the triangle are u, v, 1-u-v (useful for Gouraud shading or texture mapping)
+ *
+ *
  */
+
+/// When the function returns true, the intersection point is given by R.Origin + t * R.Dir
+/// The barycentric coordinates of the intersection in the triangle are u, v, 1-u-v (useful for Gouraud shading or texture mapping)
+/// \param segment  The segment to test
+/// \param triangle  The triangle to intersect
+/// \param closest  The closest intersection point already found
+/// \param dist the distance from the origin of the ray to the intersection point
+/// \param u baricentric coordinate
+/// \param v baricentric coordinate
+/// \return true if the ray intersects the triangle, false otherwise
 inline bool segment_triangle_intersect(pos2 segment, pos3 triangle, float closest, float *dist, float *u, float *v) {
     // TODO try to optimize this
 
@@ -308,7 +324,7 @@ inline bool segment_triangle_intersect(pos2 segment, pos3 triangle, float closes
 //            + (segment.A.z - triangle.A.z) * ((triangle.B.x - triangle.A.x) * (triangle.C.y - triangle.A.y) - (triangle.B.y - triangle.A.y) * (triangle.C.x - triangle.A.x))
 //            ) / det;
 
-    if (*dist < 0 || *dist >= closest)
+    if (*dist < 0 || *dist >= closest)  // The test "*dist < 0" prevent the camera to enter the dark dimension mirror dimension
         return false;
 
     vec3 DAO = vec3_cross(AO, segment.B);
@@ -317,12 +333,13 @@ inline bool segment_triangle_intersect(pos2 segment, pos3 triangle, float closes
 //                AO.x * segment.B.y - AO.y * segment.B.x};
 
     *u = vec3_dot(E2, DAO) / det;
-    if (*u < 0)
+    if (*u < 0)  // prevent the surfaces from being stretched to infinity
         return false;
 
     *v = -vec3_dot(E1, DAO) / det;
 
-    return (*v >= 0. && (*u + *v) <= 1.0);  // -vec3_dot(dir, N) >= EPSILON &&
+    return (*v >= 0. && (*u + *v) <= 1.0);  // prevent the surfaces from being stretched to infinity
+    // -vec3_dot(dir, N) >= EPSILON // prevent the surfaces from being seen from behind
 }
 
 inline unsigned char *get_pixel_from_buffer(Py_buffer *buffer, float u, float v) {
@@ -531,12 +548,11 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
     float d_progress_y = 1.f / (float)height;
     float d_progress_x = 1.f / (float)width;
 
-
-//    omp_set_num_threads(thread_count);
-
 //    struct pos2 ray;
 //    ray.A = {x, y, z};
 
+    // shared data between threads
+    // all shared data have a t_ prefix
     t_surfaces = self->surfaces;
     t_view_distance = view_distance;
     t_width = width;
@@ -558,7 +574,6 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
         progress_y -= d_progress_y;
 //        progress_y = 0.5 - d_progress_y * dst_y;
 
-        float y_ = forward_y + progress_y * right_y;
         // ray.B.y = forward_y + progress_y * right_y;
 
         // float progress_x = 0.5f;
@@ -566,16 +581,15 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
         struct thread_args *args = (struct thread_args *)malloc(sizeof(struct thread_args));
 
         args -> buf =  (unsigned long *) ((unsigned char *) (buf) - 2);
-        args -> y = y_;
+        args -> y = forward_y + progress_y * right_y;
 
         queue_mutex.lock();
-        args_queue.push(args);
+        args_queue.push(args);  // push the arguments to the queue
         queue_mutex.unlock();
 
         buf += width;
 
 
-//        #pragma omp parallel for
 //        for (Py_ssize_t dst_x = width; dst_x; --dst_x) {
 //
 //            progress_x -= d_progress_x;
@@ -584,29 +598,12 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
 //            ray.B.x = forward_x + progress_x * right_x;
 //            // ray.B.y = y_;
 //            ray.B.z = forward_z + progress_x * right_z;
-////
-////            long pixel = get_pixel_at(self->surfaces, ray, view_distance);
-////
-////            if (pixel)   // If the pixel is empty, don't draw it.
-////                *((unsigned long *) ((unsigned char *) (buf) - 2)) = pixel;
-////                // *((unsigned long *) ((unsigned char *) (buf + dst_y * width + dst_x) - 2)) = pixel;
 //
-//            struct thread_args *args = (struct thread_args *)malloc(sizeof(struct thread_args));
+//            long pixel = get_pixel_at(self->surfaces, ray, view_distance);
 //
-//            args -> buf =  (unsigned long *) ((unsigned char *) (buf) - 2);
-//            args -> ray = ray;
-//
-//            queue_mutex.lock();
-//            args_queue.push(args);
-//            queue_mutex.unlock();
-//
-////            printf("EXPECTED ARGS: \n"
-////                   "    buf = %p\n"
-////                   "    surfs = %p\n"
-////                   "    view_distance = %f\n"
-////                   "    A - %f %f %f\n"
-////                   "    B - %f %f %f\n", (unsigned long *) ((unsigned char *) (buf) - 2), self->surfaces, view_distance, ray.A.x, ray.A.y, ray.A.z, ray.B.x, ray.B.y, ray.B.z);
-//
+//            if (pixel)   // If the pixel is empty, don't draw it.
+//                *((unsigned long *) ((unsigned char *) (buf) - 2)) = pixel;
+//                // *((unsigned long *) ((unsigned char *) (buf + dst_y * width + dst_x) - 2)) = pixel;
 //            buf++;
 //        }
 
@@ -697,3 +694,5 @@ PyMODINIT_FUNC PyInit_pysidocast(void) {
 
     return m;
 }
+
+#pragma clang diagnostic pop
