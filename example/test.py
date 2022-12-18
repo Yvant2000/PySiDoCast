@@ -49,17 +49,6 @@ caster.add_surface(image,
                    1.5*unit, 2*unit, .5*unit,
                    reverse=True)
 
-caster.add_surface(transp3,
-                   -unit, 2*unit, 0,
-                   unit, 2*unit, 0,
-                   -unit, 0, 0,)
-
-caster.add_surface(transp3,
-                   unit, 0, 0,
-                   -unit, 0, 0,
-                   unit, 2*unit, 0,
-                   reverse=True,)
-
 caster.add_surface(transp2,
                    -unit, 2*unit, 0,
                    -unit, 2*unit, 2*unit,
@@ -105,10 +94,9 @@ caster.add_surface(image,
                    -2*unit, 2*unit, 0,
                    reverse=True)
 
-# hide mouse cursor
-pygame.mouse.set_visible(False)
 
 spot = 0
+alpha = 0.0
 if __name__ == "__main__":
     y_angle = 90
     x_angle = 0
@@ -120,7 +108,7 @@ if __name__ == "__main__":
     while True:
 
         keys = pygame.key.get_pressed()
-        time_stamp = clock.tick(30) / 100
+        time_stamp = clock.tick(60) / 100
         fps = clock.get_fps()
         print(fps)
         game_screen.fill((0, 0, 0, 0))
@@ -142,13 +130,18 @@ if __name__ == "__main__":
 
         # put the mouse in the center of the screen if the window is active
         if pygame.key.get_focused():
+            pygame.mouse.set_visible(False)
+            pygame.event.set_grab(True)
             # get the mouse position relative to the window's center
             rel = pygame.mouse.get_rel()
-            x_angle -= (rel[1] / 5) * time_stamp
-            y_angle -= (rel[0] / 5) * time_stamp
+            if rel[0] or rel[1]:
+                pygame.mouse.set_pos(dim[0] // 2, dim[1] // 2)
+            x_angle -= (rel[1] / 10)
+            y_angle -= (rel[0] / 10)
             x_angle = max(min(x_angle, 90), -90)
-
-            pygame.mouse.set_pos(dim[0] // 2, dim[1] // 2)
+        else:
+            pygame.mouse.set_visible(True)
+            pygame.event.set_grab(False)
 
         if keys[pygame.K_z]:
             z += time_stamp * speed * sin(radians(y_angle))
@@ -196,7 +189,25 @@ if __name__ == "__main__":
                          unit*3, 0.3, 0.3, 1.0,
                          direction_x=unit * sin(spot), direction_y=-3*unit, direction_z= unit + cos(spot) * unit)
 
-        spot += 0.02
+        spot += 0.07 * time_stamp
+        alpha = (alpha + 0.01 * time_stamp) % 1.0
+
+        caster.add_surface(transp3,
+                           -unit, 2*unit, 0,
+                           unit, 2*unit, 0,
+                           -unit, 0, 0,
+                           alpha=alpha,
+                           rm=True)
+
+        caster.add_surface(transp3,
+                           unit, 0, 0,
+                           -unit, 0, 0,
+                           unit, 2*unit, 0,
+                           reverse=True,
+                           alpha=alpha,
+                           rm=True)
+
+
 
         from timeit import repeat, default_timer as timer
 
@@ -210,7 +221,7 @@ if __name__ == "__main__":
                                           x_angle, y_angle,
                                           fov=60,
                                           view_distance=view_distance,
-                                          threads=16)
+                                          threads=1)
 
         test()
 

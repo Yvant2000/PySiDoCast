@@ -77,7 +77,7 @@ struct Light {
     float g; // Green component of the light
     float b; // Blue component of the light
     struct Light *next;  // Next light in the list
-    // TODO: Might add an intensity offset to simulate cel shading
+    // TODO: Might add an intensity offset (useful for cel shading)
 };
 
 ///
@@ -89,7 +89,7 @@ struct Surface {
     PyObject *parent;  // The python object that owns this surface
     bool del;  // If the Surface is temporary and needs to be deleted
     bool reverse;  // If the surface texture is reversed (useful for rectangles)
-    // TODO : Might add a transparency value for fast alpha blending
+    float alpha;  // The alpha value of the surface
 };
 
 
@@ -225,12 +225,14 @@ static PyObject *method_add_surface(RayCasterObject *self, PyObject *args, PyObj
     float C_y;
     float C_z;
 
+    float alpha = 1.0f;
+
     bool del = false;
     bool reverse = false;
 
-    static char *kwlist[] = {"image", "A_x", "A_y", "A_z", "B_x", "B_y", "B_z","C_x", "C_y", "C_z","rm", "reverse", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Offfffffff|pp", kwlist,
-                                     &surface_image, &A_x, &A_y, &A_z, &B_x, &B_y, &B_z, &C_x, &C_y, &C_z, &del, &reverse))
+    static char *kwlist[] = {"image", "A_x", "A_y", "A_z", "B_x", "B_y", "B_z","C_x", "C_y", "C_z","alpha", "rm", "reverse", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Offfffffff|fpp", kwlist,
+                                     &surface_image, &A_x, &A_y, &A_z, &B_x, &B_y, &B_z, &C_x, &C_y, &C_z, &alpha, &del, &reverse))
         return NULL;
 
     struct Surface *surface = (struct Surface *) malloc(sizeof(struct Surface));
@@ -243,6 +245,8 @@ static PyObject *method_add_surface(RayCasterObject *self, PyObject *args, PyObj
     surface->pos.C.x = C_x;
     surface->pos.C.y = C_y;
     surface->pos.C.z = C_z;
+
+    surface->alpha = alpha;
 
     surface->parent = surface_image;
     surface->del = del;
@@ -412,12 +416,33 @@ inline float line_point_distance(vec3 point, vec3 line_point, vec3 line_directio
     return vec3_length(vec3_sub(point, vec3_add(line_point, vec3_dot_float(s, ps / l2))));
 }
 
+
+/// If a surface is transparent, tells weather or not the current pixel should be ignored
+/// If alpha is 0.0 or 1.0, this is an undefined behavior
+inline bool alpha_mask(float alpha, Py_ssize_t pixel_index) {
+
+    if (alpha < 0.5) {
+        // less than 50% opaque
+        Py_ssize_t ratio = (Py_ssize_t)(1.f / alpha);
+        if (pixel_index % ratio)
+            return true;
+
+    } else {
+        // more than 50% opaque
+        Py_ssize_t ratio = (Py_ssize_t)(1.f / (1.f - alpha));
+        if (!(pixel_index % ratio))
+            return true;
+    }
+
+    return false;
+}
+
 /// Compute the intersection between a ray and the surfaces in the raycaster and return the color of the pixel
 /// \param surfaces surfaces in the scene
 /// \param ray ray to cast
 /// \param view_distance render distance
 /// \return pixel color
-inline long get_pixel_at(struct Surface *surfaces, struct Light *lights, struct pos2 ray, float view_distance, bool use_lighting) {
+inline long get_pixel_at(struct Surface *surfaces, struct Light *lights, struct pos2 ray, Py_ssize_t pixel_index, float view_distance, bool use_lighting) {
     float closest = view_distance;
     unsigned char *closest_pixel_ptr = nullptr;
     float dist;
@@ -425,6 +450,14 @@ inline long get_pixel_at(struct Surface *surfaces, struct Light *lights, struct 
     float v;
 
     for (; surfaces != nullptr; surfaces = surfaces->next) {
+
+        float alpha;
+        if (!(alpha = surfaces -> alpha))
+            continue;
+
+        if (alpha != 1.0)   // if we need to apply a transparency mask
+            if (alpha_mask(alpha, pixel_index))
+                continue;
 
         if (!segment_triangle_intersect(ray, surfaces->pos, closest, &dist, &u, &v))
             continue;
@@ -513,31 +546,33 @@ struct vec3 t_A;    // This is the position of the camera (i rember 😁)
 
 struct thread_args {          // a few args the thread needs to compute the pixel
     unsigned long *buf;      // where to write the pixel
+    Py_ssize_t pixel_index;  // index of the pixel
     float y;
 };
 
 
 void thread_worker()
 {
-    while(true)
+    while(true)  // while the job isn't done
     {
-        queue_mutex.lock();
-        if (args_queue.empty())
+        queue_mutex.lock();  // wait until I get the lock
+        if (args_queue.empty())  // check if there is job to do
         {
-            queue_mutex.unlock();
-            if (thread_quit)
+            queue_mutex.unlock(); // if not release the lock
+            if (thread_quit)  // if the job is done and we need to quit
                 return;
 
-            this_thread::sleep_for(chrono::microseconds (1));
+            this_thread::sleep_for(chrono::microseconds (1));  // wait a bit before checking again to not waste cpu
             continue;
         }
 
-        struct thread_args *args = args_queue.front();
+        struct thread_args *args = args_queue.front();  // get my args from the queue
         args_queue.pop();
-        queue_mutex.unlock();
+        queue_mutex.unlock();  // release the lock so other threads can get their args
 
 
         unsigned long *buf = args->buf;
+        Py_ssize_t pixel_index = args->pixel_index;
         float y = args->y;
         free(args);
 
@@ -550,7 +585,6 @@ void thread_worker()
         float d_progress_x = 1.0f / (float)t_width;
 
         for (Py_ssize_t dst_x = t_width; dst_x; --dst_x) {
-
             progress_x -= d_progress_x;
             // float progress_x = 0.5f - dst_x * d_progress_x;
 
@@ -558,10 +592,11 @@ void thread_worker()
             // ray.B.y = y_;
             ray.B.z = t_forward_z + progress_x * t_right_z;
 
-            long pixel = get_pixel_at(t_surfaces, t_lights, ray, t_view_distance, t_use_lighting);
+            long pixel = get_pixel_at(t_surfaces, t_lights, ray, pixel_index, t_view_distance, t_use_lighting);
             if (pixel)
                 *buf = pixel;
 
+            pixel_index++;
             buf++;
         }
 
@@ -689,6 +724,7 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
         struct thread_args *args = (struct thread_args *)malloc(sizeof(struct thread_args));
 
         args -> buf =  (unsigned long *) ((unsigned char *) (buf) - 2);
+        args -> pixel_index = (dst_y - 1); // might micro optimise with --dst_y here
         args -> y = forward_y + progress_y * right_y;
 
         queue_mutex.lock(); // mandatory lock
@@ -700,15 +736,15 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
 
     thread_quit = true;
 
-    PyBuffer_Release(&dst_buffer);
-
-    free_temp_surfaces(&(self->surfaces));
-
     for (int i = thread_count - 1; i >= 0; --i) {
         threads[i] -> join();
         delete threads[i];
     }
     free(threads);
+
+    PyBuffer_Release(&dst_buffer);
+
+    free_temp_surfaces(&(self->surfaces));
 
     Py_RETURN_NONE;
 }
