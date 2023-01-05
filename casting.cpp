@@ -642,10 +642,12 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
         return NULL;
     }
 
-    if (thread_count < 1) {
-        PyErr_SetString(PyExc_ValueError, "thread_count must be greater than 0");
+    if (thread_count == 0) {
+        PyErr_SetString(PyExc_ValueError, "thread_count can't be 0");
         return NULL;
-    }
+    } else if (thread_count < 0)
+        thread_count = thread::hardware_concurrency();
+
 
     Py_buffer dst_buffer;
     if (_get_3DBuffer_from_Surface(screen, &dst_buffer)) {

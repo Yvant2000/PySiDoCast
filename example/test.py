@@ -221,7 +221,7 @@ if __name__ == "__main__":
                                           x_angle, y_angle,
                                           fov=60,
                                           view_distance=view_distance,
-                                          threads=1)
+                                          threads=-1)
 
         test()
 
