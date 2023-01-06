@@ -185,9 +185,8 @@ inline float vec3_dist(vec3 dot1, vec3 dot2) {
 /// \return true on error, false on success
 inline bool _get_3DBuffer_from_Surface(PyObject *img, Py_buffer *buffer) {
     PyObject * get_view_method = PyObject_GetAttrString(img, "get_view");
-    if (get_view_method == NULL) {
+    if (get_view_method == NULL)
         return true;
-    }
 
     PyObject *arg = Py_BuildValue("y", "3");
     PyObject * view = PyObject_CallOneArg(get_view_method, arg); // array of width * height * RGBA
@@ -467,7 +466,7 @@ inline long get_pixel_at(struct Surface *surfaces, struct Light *lights, struct 
             v = 1.0f - v;
         }
 
-        unsigned char *new_pixel_ptr = get_pixel_from_buffer(&surfaces->buffer, u, v);
+        unsigned char *new_pixel_ptr = get_pixel_from_buffer(&surfaces->buffer, u, v); // TODO move this out of the loop if possible
         if (new_pixel_ptr[ALPHA]) {
             closest = dist;
             closest_pixel_ptr = new_pixel_ptr;
