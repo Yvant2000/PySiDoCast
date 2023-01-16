@@ -2,7 +2,7 @@ from setuptools import setup, Extension
 from distutils import ccompiler
 
 compiler = ccompiler.get_default_compiler()
-print(compiler)
+# print(compiler)
 
 
 args = []

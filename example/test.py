@@ -11,11 +11,11 @@ pygame.init()
 clock = pygame.time.Clock()
 
 caster = pysidocast.RayCaster()
-caster2 = pysidocast.RayCaster()
+# caster2 = pysidocast.RayCaster()
 
 infoObject = pygame.display.Info()
 
-mult = 0.4
+mult = 0.35
 dim = (infoObject.current_w * mult, infoObject.current_h * mult)
 print(dim)
 unit = 1
@@ -190,13 +190,13 @@ if __name__ == "__main__":
                          direction_x=unit * sin(spot), direction_y=-3*unit, direction_z= unit + cos(spot) * unit)
 
         spot += 0.07 * time_stamp
-        alpha = (alpha + 0.01 * time_stamp) % 1.0
+        alpha = (alpha + 0.05 * time_stamp) % 1.0
 
         caster.add_surface(transp3,
                            -unit, 2*unit, 0,
                            unit, 2*unit, 0,
                            -unit, 0, 0,
-                           alpha=alpha,
+                           alpha=1 - alpha,
                            rm=True)
 
         caster.add_surface(transp3,
@@ -204,7 +204,7 @@ if __name__ == "__main__":
                            -unit, 0, 0,
                            unit, 2*unit, 0,
                            reverse=True,
-                           alpha=alpha,
+                           alpha=1-alpha,
                            rm=True)
 
 
@@ -225,7 +225,7 @@ if __name__ == "__main__":
 
         test()
 
-        # print(repeat(test, repeat=5, number=10))
+        # print(repeat(test, repeat=5, number=100))
         # exit()
 
         pygame.transform.scale(game_screen, dim, screen)
