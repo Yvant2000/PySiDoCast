@@ -22,20 +22,17 @@ transp = pygame.image.load(".\\example\\transp.png").convert_alpha()
 transp2 = pygame.image.load(".\\example\\transp2.png").convert_alpha()
 transp3 = pygame.image.load(".\\example\\transp3.png").convert_alpha()
 
-caster.add_plane(transp,
-                 unit, 2 * unit, 2 * unit,
-                 unit, 2 * unit, 0,
-                 unit, 0, 2 * unit)
+caster.add_wall(transp,
+                unit, 2 * unit, 2 * unit,
+                unit, 0, 0)
 
-caster.add_plane(image,
-                 1.5 * unit, 2 * unit, 2.5 * unit,
-                 1.5 * unit, 2 * unit, .5 * unit,
-                 1.5 * unit, 0, 2.5 * unit)
+caster.add_wall(image,
+                1.5 * unit, 2 * unit, .5 * unit,
+                1.5 * unit, 0, 2.5 * unit)
 
-caster.add_plane(transp2,
-                 -unit, 2 * unit, 0,
-                 -unit, 2 * unit, 2 * unit,
-                 -unit, 0, 0)
+caster.add_wall(transp2,
+                -unit, 2 * unit, 0,
+                -unit, 0, 2 * unit)
 
 caster.add_plane(image,
                  -unit + 0.5, 2 * unit, 2 * unit,
@@ -149,12 +146,11 @@ if __name__ == "__main__":
         spot += 0.07 * time_stamp
         alpha = (alpha + 0.005 * time_stamp) % 1.0
 
-        caster.add_plane(transp3,
-                         -unit, 2 * unit, 0,
-                         unit, 2 * unit, 0,
-                         -unit, 0, 0,
-                         alpha=1 - alpha,
-                         rm=True)
+        caster.add_wall(transp3,
+                        -unit, 2 * unit, 0,
+                        unit, 0, 0,
+                        alpha=1 - alpha,
+                        rm=True)
 
         # from timeit import repeat, default_timer as timer
 

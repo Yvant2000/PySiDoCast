@@ -19,7 +19,7 @@ using namespace std;  // I hate cpp and its namespaces
 
 
 /// PyObject containing the RayCaster
-typedef struct t_RayCasterObject{
+typedef struct t_RayCasterObject {
     PyObject_HEAD           // required python object header
     struct Surface *surfaces = nullptr;     // List of surfaces
     struct Light *lights = nullptr;         // List of lights
@@ -344,7 +344,83 @@ static PyObject *method_add_plane(RayCasterObject *self, PyObject *args, PyObjec
     surface2->reverse = true;
 
     if (_get_3DBuffer_from_Surface(surface_image, &surface->buffer)
-    || _get_3DBuffer_from_Surface(surface_image, &surface2->buffer)) {
+        || _get_3DBuffer_from_Surface(surface_image, &surface2->buffer)) {
+        PyErr_SetString(PyExc_ValueError, "Not a valid surface");
+        free(surface);
+        free(surface2);
+        return NULL;
+    }
+
+    Py_INCREF(surface_image); // We need to keep the surface alive to make sure the buffer is valid.
+    Py_INCREF(surface_image); // Two surfaces means we need to incref twice
+
+    surface->next = surface2;
+    surface2->next = self->surfaces; // Push the surface on top of the stack.
+    self->surfaces = surface;
+
+    Py_RETURN_NONE;
+}
+
+
+
+
+/// Add a wall (two triangles) to the list of surfaces in the raycaster
+/// \param self The raycaster object
+/// \param args The position arguments passed to the function
+/// \param kwargs The keyword arguments passed to the function
+/// \return (Python) None
+static PyObject *method_add_wall(RayCasterObject *self, PyObject *args, PyObject *kwargs) {
+    PyObject *surface_image;
+
+    float A_x;
+    float A_y;
+    float A_z;
+
+    float B_x;
+    float B_y;
+    float B_z;
+
+    float alpha = 1.0f;
+
+    bool del = false;
+
+    static char *kwlist[] = {"image", "A_x", "A_y", "A_z", "B_x", "B_y", "B_z","alpha", "rm", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Offffff|fp", kwlist,
+                                     &surface_image, &A_x, &A_y, &A_z, &B_x, &B_y, &B_z, &alpha, &del))
+        return NULL;
+
+    struct Surface *surface = (struct Surface *) malloc(sizeof(struct Surface));
+    surface->pos.A.x = A_x;
+    surface->pos.A.y = A_y;
+    surface->pos.A.z = A_z;
+    surface->pos.B.x = B_x;
+    surface->pos.B.y = A_y;
+    surface->pos.B.z = B_z;
+    surface->pos.C.x = A_x;
+    surface->pos.C.y = B_y;
+    surface->pos.C.z = A_z;
+    surface->alpha = alpha;
+    surface->parent = surface_image;
+    surface->del = del;
+    surface->reverse = false;
+
+    struct Surface *surface2 = (struct Surface *) malloc(sizeof(struct Surface));
+    surface2->pos.A.x = B_x;
+    surface2->pos.A.y = B_y;
+    surface2->pos.A.z = B_z;
+    surface2->pos.B.x = A_x;
+    surface2->pos.B.y = B_y;
+    surface2->pos.B.z = A_z;
+    surface2->pos.C.x = B_x;
+    surface2->pos.C.y = A_y;
+    surface2->pos.C.z = B_z;
+    surface2->alpha = alpha;
+    surface2->parent = surface_image;
+    surface2->del = del;
+    surface2->reverse = true;
+
+    if (_get_3DBuffer_from_Surface(surface_image, &surface->buffer)
+        || _get_3DBuffer_from_Surface(surface_image, &surface2->buffer)) {
         PyErr_SetString(PyExc_ValueError, "Not a valid surface");
         free(surface);
         free(surface2);
@@ -972,6 +1048,7 @@ void RayCaster_dealloc(RayCasterObject *self) {
 static PyMethodDef CasterMethods[] = {
         {"add_surface", (PyCFunction) method_add_surface, METH_VARARGS | METH_KEYWORDS, "Adds a surface to the caster."},
         {"add_plane", (PyCFunction) method_add_plane, METH_VARARGS | METH_KEYWORDS, "Adds a plane to the caster."},
+        {"add_wall", (PyCFunction) method_add_wall, METH_VARARGS | METH_KEYWORDS, "Adds a wall to the caster."},
         {"clear_surfaces", (PyCFunction) method_clear_surfaces, METH_NOARGS, "Clears all surfaces from the caster."},
         {"add_light", (PyCFunction) method_add_light, METH_VARARGS | METH_KEYWORDS, "Adds a light to the scene."},
         {"clear_lights", (PyCFunction) method_clear_lights, METH_NOARGS, "Clears all lights from the caster."},
