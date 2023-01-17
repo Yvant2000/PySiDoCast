@@ -14,6 +14,10 @@ using namespace std;  // I hate cpp and its namespaces
 #define GREEN 1
 #define BLUE 0
 
+
+#define DITHERING_SIZE 16  // Values above 16 will make hardly any difference
+
+
 /// PyObject containing the RayCaster
 typedef struct t_RayCasterObject{
     PyObject_HEAD           // required python object header
@@ -65,6 +69,7 @@ struct pos3 {
 };
 
 
+
 ///
 /// \brief A light source in the scene.
 struct Light {
@@ -78,6 +83,7 @@ struct Light {
     struct Light *next;  // Next light in the list
     // TODO: Might add an intensity offset (useful for cel shading)
 };
+
 
 ///
 /// \brief A surface in the scene
@@ -101,19 +107,32 @@ inline void free_surface(struct Surface *surface) {
     free(surface);
 }
 
+
 /// Free temporary surfaces in the list
 /// \param surfaces The list of surfaces
 inline void free_temp_surfaces(struct Surface **surfaces) {
-    struct Surface *prev = nullptr;
+
+    // The temporary surfaces and the other surfaces are shuffled in the list
+
+    // ensure that the first surface is not temporary
+    while((*surfaces) -> del) {
+        struct Surface *next = (*surfaces) -> next;
+        free_surface(*surfaces);
+        *surfaces = next;
+    }
+
+    // if all surfaces were temporary, return
+    if (*surfaces == nullptr)
+        return;
+
+    // free the rest of the surfaces
+    struct Surface *prev = *surfaces;
     struct Surface *next;
-    for (struct Surface *current = *surfaces; current != nullptr; current = next) {
-        next = current->next;
+    for (struct Surface *current = prev -> next; current != nullptr; current = next) {
+        next = current -> next;
         if (current->del) {
             free_surface(current);
-            if (prev == nullptr)
-                *surfaces = next;
-            else
-                prev->next = next;
+            prev->next = next;
         } else
             prev = current;
     }
@@ -177,22 +196,26 @@ inline float vec3_dist(vec3 dot1, vec3 dot2) {
 }
 
 /// gets the py_buffer from a pygame surface
-/// \param img pygame surface
-/// \param buffer the buffer from the image
-/// \return true on error, false on success
+/// \attention For this to work, you must use `.convert_alpha()` on the surface before passing it to this function
+/// \param img          pygame surface
+/// \param buffer       the buffer from the image
+/// \return         true on error, false on success
 inline bool _get_3DBuffer_from_Surface(PyObject *img, Py_buffer *buffer) {
     PyObject * get_view_method = PyObject_GetAttrString(img, "get_view");
-    if (get_view_method == NULL)
+    if (get_view_method == NULL) {
+        printf("Error: Could not get the get_view method from the surface\n");
         return true;
+    }
 
     PyObject *arg = Py_BuildValue("y", "3");
-    PyObject * view = PyObject_CallOneArg(get_view_method, arg); // array of width * height * RGBA
+    PyObject *view = PyObject_CallOneArg(get_view_method, arg); // array of width * height * RGBA
 
     Py_DECREF(arg);
     Py_DECREF(get_view_method);
 
     if (PyObject_GetBuffer(view, buffer, PyBUF_STRIDES) == -1) {
         Py_DECREF(view);
+        printf("Error: Could not get the buffer from the view\n");
         return true;
     }
 
@@ -261,6 +284,83 @@ static PyObject *method_add_surface(RayCasterObject *self, PyObject *args, PyObj
     Py_RETURN_NONE;
 }
 
+/// Add a plane (two triangles) to the list of surfaces in the raycaster
+/// \param self The raycaster object
+/// \param args The position arguments passed to the function
+/// \param kwargs The keyword arguments passed to the function
+/// \return (Python) None
+static PyObject *method_add_plane(RayCasterObject *self, PyObject *args, PyObject *kwargs) {
+    PyObject *surface_image;
+
+    float A_x;
+    float A_y;
+    float A_z;
+
+    float B_x;
+    float B_y;
+    float B_z;
+
+    float C_x;
+    float C_y;
+    float C_z;
+
+    float alpha = 1.0f;
+
+    bool del = false;
+
+    static char *kwlist[] = {"image", "A_x", "A_y", "A_z", "B_x", "B_y", "B_z","C_x", "C_y", "C_z","alpha", "rm", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Offfffffff|fp", kwlist,
+                                     &surface_image, &A_x, &A_y, &A_z, &B_x, &B_y, &B_z, &C_x, &C_y, &C_z, &alpha, &del))
+        return NULL;
+
+    struct Surface *surface = (struct Surface *) malloc(sizeof(struct Surface));
+    surface->pos.A.x = A_x;
+    surface->pos.A.y = A_y;
+    surface->pos.A.z = A_z;
+    surface->pos.B.x = B_x;
+    surface->pos.B.y = B_y;
+    surface->pos.B.z = B_z;
+    surface->pos.C.x = C_x;
+    surface->pos.C.y = C_y;
+    surface->pos.C.z = C_z;
+    surface->alpha = alpha;
+    surface->parent = surface_image;
+    surface->del = del;
+    surface->reverse = false;
+
+    struct Surface *surface2 = (struct Surface *) malloc(sizeof(struct Surface));
+    surface2->pos.A.x = C_x + B_x - A_x;
+    surface2->pos.A.y = C_y + B_y - A_y;
+    surface2->pos.A.z = C_z + B_z - A_z;
+    surface2->pos.B.x = C_x;
+    surface2->pos.B.y = C_y;
+    surface2->pos.B.z = C_z;
+    surface2->pos.C.x = B_x;
+    surface2->pos.C.y = B_y;
+    surface2->pos.C.z = B_z;
+    surface2->alpha = alpha;
+    surface2->parent = surface_image;
+    surface2->del = del;
+    surface2->reverse = true;
+
+    if (_get_3DBuffer_from_Surface(surface_image, &surface->buffer)
+    || _get_3DBuffer_from_Surface(surface_image, &surface2->buffer)) {
+        PyErr_SetString(PyExc_ValueError, "Not a valid surface");
+        free(surface);
+        free(surface2);
+        return NULL;
+    }
+
+    Py_INCREF(surface_image); // We need to keep the surface alive to make sure the buffer is valid.
+    Py_INCREF(surface_image); // Two surfaces means we need to incref twice
+
+    surface->next = surface2;
+    surface2->next = self->surfaces; // Push the surface on top of the stack.
+    self->surfaces = surface;
+
+    Py_RETURN_NONE;
+}
+
 
 static PyObject *method_add_light(RayCasterObject *self, PyObject *args, PyObject *kwargs) {
     float light_x;
@@ -312,6 +412,7 @@ static PyObject *method_add_light(RayCasterObject *self, PyObject *args, PyObjec
     Py_RETURN_NONE;
 }
 
+
 /// Free all the surfaces in the raycaster
 /// \param self  The raycaster object
 /// \return (Python) None
@@ -323,6 +424,7 @@ static PyObject *method_clear_surfaces(RayCasterObject *self) {
     }
     Py_RETURN_NONE;
 }
+
 
 /// Free all the lights in the raycaster
 /// \param self  The raycaster object
@@ -416,6 +518,12 @@ inline float line_point_distance(vec3 point, vec3 line_point, vec3 line_directio
     return vec3_length(vec3_sub(point, vec3_add(line_point, vec3_dot_float(s, ps / l2))));
 }
 
+/// Compute weather or not a pixel should be drawn depending of the alpha value
+/// \param alpha            alpha value of the pixel
+/// \param dither_matrix    dither matrix to use
+/// \param x                x coordinate of the pixel on the screen
+/// \param y                y coordinate of the pixel on the screen
+/// \return         true if the pixel should be skipped, false otherwise
 inline bool alpha_dither(float alpha, float *dither_matrix, Py_ssize_t x, Py_ssize_t y) {
     if (!alpha)  // pixel isn't seen at all
         return true;
@@ -423,38 +531,9 @@ inline bool alpha_dither(float alpha, float *dither_matrix, Py_ssize_t x, Py_ssi
     if (alpha == 1.0f)  // pixel isn't transparent
         return false;
 
-    return alpha > dither_matrix[(y % 32) * 32 + (x % 32)];  // TODO custom dether size
+    return alpha < dither_matrix[(y % DITHERING_SIZE) * DITHERING_SIZE + (x % DITHERING_SIZE)];  // TODO might add custom dether size
 }
 
-
-
-///// If a surface is transparent, tells weather or not the current pixel should be ignored
-//inline bool alpha_mask(float alpha, Py_ssize_t pixel_index_x, Py_ssize_t pixel_index_y) {
-//    if (!alpha)  // pixel isn't seen at all
-//        return true;
-//
-//    if (alpha == 1.0f)  // pixel isn't transparent
-//        return false;
-//
-//    if (alpha <= 0.5) {
-//        // less than 50% opaque
-//        Py_ssize_t ratio = (Py_ssize_t)(1.f / alpha);
-//        if (pixel_index_x % ratio)
-//            return true;
-//        if (pixel_index_y % ratio)
-//            return true;
-//
-//    } else {
-//        // more than 50% opaque
-//        Py_ssize_t ratio = (Py_ssize_t)(1.f / (1.f - alpha));
-//        if (!(pixel_index_x % ratio))
-//            return true;
-//        if (!(pixel_index_y % ratio))
-//            return true;
-//    }
-//
-//    return false;
-//}
 
 /// Compute the intersection between a ray and the surfaces in the raycaster and return the color of the pixel
 /// \param surfaces surfaces in the scene
@@ -467,15 +546,10 @@ inline long get_pixel_at(RayCasterObject *raycaster, struct pos2 ray, Py_ssize_t
 
     for (struct Surface *surfaces = raycaster->surfaces; surfaces != nullptr; surfaces = surfaces->next) {
 
-//        if (alpha_mask(surfaces -> alpha, pixel_index_x, pixel_index_y))
-//            continue;
-
         if (alpha_dither(surfaces -> alpha, raycaster->dither_matrix, pixel_index_x, pixel_index_y))
             continue;
 
-        float dist;
-        float u;
-        float v;
+        float dist, u, v;
         if (!segment_triangle_intersect(ray, surfaces->pos, closest, &dist, &u, &v))
             continue;
 
@@ -484,9 +558,7 @@ inline long get_pixel_at(RayCasterObject *raycaster, struct pos2 ray, Py_ssize_t
             v = 1.0f - v;
         }
 
-        unsigned char *new_pixel_ptr = get_pixel_from_buffer(&surfaces->buffer, u, v); // TODO move this out of the loop if possible
-//        if (alpha_mask(new_pixel_ptr[ALPHA] / 255.f, pixel_index_x, pixel_index_y))
-//            continue;
+        unsigned char *new_pixel_ptr = get_pixel_from_buffer(&surfaces->buffer, u, v);
         if (alpha_dither(new_pixel_ptr[ALPHA] / 255.f, raycaster->dither_matrix, pixel_index_x, pixel_index_y))
             continue;
 
@@ -551,13 +623,14 @@ inline long get_pixel_at(RayCasterObject *raycaster, struct pos2 ray, Py_ssize_t
 }
 
 
+mutex queue_mutex;  // Allows only one thread to access the queue at a time
+queue<struct thread_args*> args_queue;  // Queue of data that is NOT shared between threads
+bool thread_quit;   // Tells the threads to quit once they are done with their current task
+
 // SHARED DATA
 // (not so pretty, but it works)
 // I store here all the data and shit that will be shared across all the threads
 
-mutex queue_mutex;  // Allows only one thread to access the queue at a time
-queue<struct thread_args*> args_queue;  // Queue of data that is NOT shared between threads
-bool thread_quit;   // Tells the threads to quit once they are done with their current task
 RayCasterObject *t_raycaster;  // Raycaster object
 float t_view_distance;  // View distance of the current scene
 Py_ssize_t t_width;  // width of the current screen (for some reason we don't need the height)
@@ -568,6 +641,7 @@ float t_right_z;    // Don't touch this anyway
 struct vec3 t_A;    // This is the position of the camera (i rember 😁)
 
 
+/// data for each individual thread
 struct thread_args {          // a few args the thread needs to compute the pixel
     unsigned long *buf;      // where to write the pixel
     Py_ssize_t pixel_index;  // index of the pixel
@@ -745,14 +819,14 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
         // ray.B.y = forward_y + progress_y * right_y; // computed once for each thread
 
 
-        struct thread_args *args = (struct thread_args *)malloc(sizeof(struct thread_args));
+        struct thread_args *t_args = (struct thread_args *)malloc(sizeof(struct thread_args));
 
-        args -> buf =  (unsigned long *) ((unsigned char *) (buf) - 2);
-        args -> pixel_index = dst_y;
-        args -> y = forward_y + progress_y * right_y;
+        t_args -> buf =  (unsigned long *) ((unsigned char *) (buf) - 2);
+        t_args -> pixel_index = dst_y;
+        t_args -> y = forward_y + progress_y * right_y;
 
         queue_mutex.lock(); // mandatory lock
-        args_queue.push(args);
+        args_queue.push(t_args);
         queue_mutex.unlock();
 
         buf += width;
@@ -773,15 +847,18 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
     Py_RETURN_NONE;
 }
 
-
+/// Compute the distance to the nearest surface in the given direction
+/// If no intersection is found, return the maximum distance.
+/// \param ray              starting point and direction
+/// \param max_distance     maximum distance to search for
+/// \param surfaces         list of surfaces to search in
+/// \return           distance to the nearest surface
 float get_closest_intersection(pos2 ray, float max_distance, struct Surface *surfaces) {
     float closest = max_distance;
-    float dist;
-    float u;
-    float v;
 
     for (; surfaces != nullptr; surfaces = surfaces->next) {
 
+        float dist, u, v;
         if (!segment_triangle_intersect(ray, surfaces->pos, closest, &dist, &u, &v))
             continue;
 
@@ -833,48 +910,47 @@ static PyObject *method_single_cast(RayCasterObject *self, PyObject *args, PyObj
     return Py_BuildValue("f", get_closest_intersection(ray, max_distance, self->surfaces));
 }
 
-static unsigned char lookup[16] = {
-        0x0, 0x8, 0x4, 0xc, 0x2, 0xa, 0x6, 0xe,
-        0x1, 0x9, 0x5, 0xd, 0x3, 0xb, 0x7, 0xf, };
-
 
 unsigned char bit_reverse(unsigned char n) {
+    static unsigned char reverse_lookup[16] = {
+            0x0, 0x8, 0x4, 0xc, 0x2, 0xa, 0x6, 0xe,
+            0x1, 0x9, 0x5, 0xd, 0x3, 0xb, 0x7, 0xf, };
     // Reverse the top and bottom nibble then swap them.
-    return (lookup[n&0b1111] << 4) | lookup[n>>4];
+    return (reverse_lookup[n&0b1111] << 4) | reverse_lookup[n>>4];
 }
 
 unsigned int bit_interleave(unsigned char a, unsigned char b) {
     unsigned int z = 0; // z gets the resulting Morton Number.
 
-    for (int i = 0; i < sizeof(a) * CHAR_BIT; i++) // unroll for more speed...
+    for (int i = 0; i < sizeof(a) * CHAR_BIT; i++)
         z |= (a & 1U << i) << i | (b & 1U << i) << (i + 1);
 
     return z;
 }
 
 
+/// Generate the dither matrix for the given size.
+/// \param size     height/width of the matrix
+/// \return         pointer to the matrix. The caller is responsible for freeing the memory.
 float * generate_dither_matrix(unsigned int size) {
     float *matrix = (float *)malloc(sizeof(float) * size * size);
 
-    for (unsigned int i = 0; i < size; ++i) {
-        for (unsigned int j = 0; j < size; ++j) {
+    for (unsigned int i = 0; i < size; ++i)
+        for (unsigned int j = 0; j < size; ++j)
             matrix[i * size + j] = ((float)bit_reverse(bit_interleave(i ^ j, i))) / 256;
-        }
-    }
 
     return matrix;
 }
 
 
+/// New method to allocate the Raycaster object
 static RayCasterObject *RayCaster_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
     RayCasterObject *self = (RayCasterObject *) type->tp_alloc(type, 0);
     if (self == NULL)
         return NULL;
 
-    unsigned int dithering = 32;
-
-    self -> dither_matrix = generate_dither_matrix(dithering);
+    self -> dither_matrix = generate_dither_matrix(DITHERING_SIZE);
 
     return (RayCasterObject *) self;
 }
@@ -893,9 +969,9 @@ void RayCaster_dealloc(RayCasterObject *self) {
     Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
-
 static PyMethodDef CasterMethods[] = {
         {"add_surface", (PyCFunction) method_add_surface, METH_VARARGS | METH_KEYWORDS, "Adds a surface to the caster."},
+        {"add_plane", (PyCFunction) method_add_plane, METH_VARARGS | METH_KEYWORDS, "Adds a plane to the caster."},
         {"clear_surfaces", (PyCFunction) method_clear_surfaces, METH_NOARGS, "Clears all surfaces from the caster."},
         {"add_light", (PyCFunction) method_add_light, METH_VARARGS | METH_KEYWORDS, "Adds a light to the scene."},
         {"clear_lights", (PyCFunction) method_clear_lights, METH_NOARGS, "Clears all lights from the caster."},
@@ -925,6 +1001,7 @@ static struct PyModuleDef castermodule = {
 };
 
 
+/// Initialize the module.
 PyMODINIT_FUNC PyInit_pysidocast(void) {
     if (PyType_Ready(&RayCasterType) < 0)
         return NULL;

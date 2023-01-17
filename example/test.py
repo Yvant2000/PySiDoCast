@@ -1,10 +1,6 @@
-
-
 import pysidocast
 import pygame
 from math import *
-
-from os.path import join as join_path
 
 pygame.init()
 
@@ -15,85 +11,46 @@ caster = pysidocast.RayCaster()
 
 infoObject = pygame.display.Info()
 
-mult = 0.35
+mult = 0.32
 dim = (infoObject.current_w * mult, infoObject.current_h * mult)
-print(dim)
-unit = 1
+unit = 1  # set to 3000000000000 for fun things
 view_distance = 3 * unit
 screen = pygame.display.set_mode(dim, pygame.SCALED | pygame.FULLSCREEN)
 game_screen = pygame.Surface(dim)
-image = pygame.image.load(".\\example\\bg.png").convert_alpha()
+image = pygame.image.load(".\\example\\bg.png").convert_alpha()  # WARNING: the ".convert_alpha()" is mandatory
 transp = pygame.image.load(".\\example\\transp.png").convert_alpha()
 transp2 = pygame.image.load(".\\example\\transp2.png").convert_alpha()
 transp3 = pygame.image.load(".\\example\\transp3.png").convert_alpha()
 
-caster.add_surface(transp,
-                   unit, 2 * unit, 2 * unit,
-                   unit, 2 * unit, 0,
-                   unit, 0, 2 * unit)
+caster.add_plane(transp,
+                 unit, 2 * unit, 2 * unit,
+                 unit, 2 * unit, 0,
+                 unit, 0, 2 * unit)
 
-caster.add_surface(transp,
-                   unit, 0, 0,
-                   unit, 0, 2 * unit,
-                   unit, 2*unit, 0,
-                   reverse=True)
+caster.add_plane(image,
+                 1.5 * unit, 2 * unit, 2.5 * unit,
+                 1.5 * unit, 2 * unit, .5 * unit,
+                 1.5 * unit, 0, 2.5 * unit)
 
-caster.add_surface(image,
-                   1.5*unit, 2*unit, 2.5*unit,
-                   1.5*unit, 2*unit, .5*unit,
-                   1.5*unit, 0, 2.5*unit)
+caster.add_plane(transp2,
+                 -unit, 2 * unit, 0,
+                 -unit, 2 * unit, 2 * unit,
+                 -unit, 0, 0)
 
-caster.add_surface(image,
-                   1.5*unit, 0, .5*unit,
-                   1.5*unit, 0, 2.5*unit,
-                   1.5*unit, 2*unit, .5*unit,
-                   reverse=True)
+caster.add_plane(image,
+                 -unit + 0.5, 2 * unit, 2 * unit,
+                 unit, 2 * unit, 2 * unit,
+                 -unit, 0, 2 * unit)
 
-caster.add_surface(transp2,
-                   -unit, 2*unit, 0,
-                   -unit, 2*unit, 2*unit,
-                   -unit, 0, 0)
+caster.add_plane(image,
+                 -unit, 0.0, 2 * unit,
+                 unit, 0.0, 2 * unit,
+                 -unit, 0.0, 0)
 
-caster.add_surface(transp2,
-                   -unit, 0, 2*unit,
-                   -unit, 0, 0,
-                   -unit, 2*unit, 2*unit,
-                   reverse=True)
-
-caster.add_surface(image,
-                   -unit+0.5, 2*unit, 2*unit,
-                   unit, 2*unit, 2*unit,
-                   -unit, 0, 2*unit)
-
-caster.add_surface(image,
-                   unit-0.5, 0, 2*unit,
-                   -unit, 0, 2*unit,
-                   unit, 2*unit, 2*unit,
-                   reverse=True)
-
-
-caster.add_surface(image,
-                   -unit, 0.0, 2*unit,
-                   unit, 0.0, 2*unit,
-                   -unit, 0.0, 0)
-
-caster.add_surface(image,
-                   unit, 0.0, 0,
-                   -unit, 0.0, 0,
-                   unit, 0.0, 2*unit,
-                   reverse=True)
-
-caster.add_surface(image,
-                   -2*unit, 2*unit, unit,
-                   -2*unit, 2*unit, 0,
-                   -3*unit, 0, unit)
-
-caster.add_surface(image,
-                   -3*unit, 0, 0,
-                   -3*unit, 0, unit,
-                   -2*unit, 2*unit, 0,
-                   reverse=True)
-
+caster.add_plane(image,
+                 -2 * unit, 2 * unit, unit,
+                 -2 * unit, 2 * unit, 0,
+                 -3 * unit, 0, unit)
 
 spot = 0
 alpha = 0.0
@@ -101,10 +58,10 @@ if __name__ == "__main__":
     y_angle = 90
     x_angle = 0
     x = 0
-    z = -0.5*unit
+    z = -0.5 * unit
     y = unit
-    time = 0
-    speed = unit/3
+    speed = unit / 3
+
     while True:
 
         keys = pygame.key.get_pressed()
@@ -177,51 +134,41 @@ if __name__ == "__main__":
         caster.clear_lights()
 
         caster.add_light(
-                         x, y, z,
-                         view_distance, 0.5, 0.6, 0.7,
-                         direction_x=x + cos(radians(y_angle)) * view_distance * 1.8,
-                         direction_y=y + sin(radians(x_angle)) * view_distance * 1.8,
-                         direction_z=z + sin(radians(y_angle)) * view_distance * 1.8,
-                         )
-        caster.add_light(0, 0, unit/2, unit * 2, 0.5, 0.3, 0.2)
+            x, y, z,
+            view_distance, 0.5, 0.6, 0.7,
+            direction_x=x + cos(radians(y_angle)) * view_distance * 1.8,
+            direction_y=y + sin(radians(x_angle)) * view_distance * 1.8,
+            direction_z=z + sin(radians(y_angle)) * view_distance * 1.8,
+        )
+        caster.add_light(0, 0, unit / 2, unit * 2, 0.5, 0.3, 0.2)
 
         caster.add_light(cos(spot) * unit, unit * 2, unit + sin(spot) * unit,
-                         unit*3, 0.3, 0.3, 1.0,
-                         direction_x=unit * sin(spot), direction_y=-3*unit, direction_z= unit + cos(spot) * unit)
+                         unit * 3, 0.3, 0.3, 1.0,
+                         direction_x=unit * sin(spot), direction_y=-3 * unit, direction_z=unit + cos(spot) * unit)
 
         spot += 0.07 * time_stamp
-        alpha = (alpha + 0.05 * time_stamp) % 1.0
+        alpha = (alpha + 0.005 * time_stamp) % 1.0
 
-        caster.add_surface(transp3,
-                           -unit, 2*unit, 0,
-                           unit, 2*unit, 0,
-                           -unit, 0, 0,
-                           alpha=1 - alpha,
-                           rm=True)
+        caster.add_plane(transp3,
+                         -unit, 2 * unit, 0,
+                         unit, 2 * unit, 0,
+                         -unit, 0, 0,
+                         alpha=1 - alpha,
+                         rm=True)
 
-        caster.add_surface(transp3,
-                           unit, 0, 0,
-                           -unit, 0, 0,
-                           unit, 2*unit, 0,
-                           reverse=True,
-                           alpha=1-alpha,
-                           rm=True)
-
-
-
-        from timeit import repeat, default_timer as timer
+        # from timeit import repeat, default_timer as timer
 
         # start = timer()
 
         # end = timer()
         # print(end - start)
 
-        test = lambda: caster.raycasting(game_screen,
-                                          x, y, z,
-                                          x_angle, y_angle,
-                                          fov=60,
-                                          view_distance=view_distance,
-                                          threads=-1)
+        test = lambda: caster.raycasting(game_screen,  # NOQA
+                                         x, y, z,
+                                         x_angle, y_angle,
+                                         fov=60,
+                                         view_distance=view_distance,
+                                         threads=-1)
 
         test()
 
@@ -230,9 +177,4 @@ if __name__ == "__main__":
 
         pygame.transform.scale(game_screen, dim, screen)
 
-        # screen.blit(game_screen, (0, 0))
-
         pygame.display.update()
-        # y_angle += 1
-        # x_angle += 1
-        time += 1
