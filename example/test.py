@@ -159,7 +159,7 @@ if __name__ == "__main__":
         # end = timer()
         # print(end - start)
 
-        test = lambda: caster.raycasting(game_screen,  # NOQA
+        test = lambda: caster.render(game_screen,  # NOQA
                                          x, y, z,
                                          x_angle, y_angle,
                                          fov=60,
