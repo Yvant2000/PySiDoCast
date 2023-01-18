@@ -14,16 +14,17 @@ author = 'Yvant2000'
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = [
-    "m2r",
     "sphinx.ext.duration",
     "sphinx.ext.doctest",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.intersphinx",
+    "m2r",
 ]
 
 templates_path = ['_templates']
 exclude_patterns = []
+source_suffix = ['.rst', '.md']
 
 
 # -- Options for HTML output -------------------------------------------------
