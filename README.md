@@ -1,7 +1,8 @@
 # Pygame 6DoF Ray Caster
 
 PySiDoCast is a Python module that allows you to render 3D scenes using Pygame images.
-> :warning: **There is no GPU support for the moment**: The rendering is made on the CPU only.
+> **Warning**
+> **There is no GPU support for the moment**: The rendering is made on the CPU only.
 
 
 ## Installation
@@ -12,7 +13,7 @@ To install PySiDoCast, simply use pip:
 pip install pysidocast
 ```
 
-![Screenshot](https://media.discordapp.net/attachments/914913842260217898/1065063845191753790/image.png?width=400&height=300)
+![Screenshot](https://media.discordapp.net/attachments/914913842260217898/1065063845191753790/image.png)
 
 ## Usage
 
