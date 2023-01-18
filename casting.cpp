@@ -112,6 +112,9 @@ inline void free_surface(struct Surface *surface) {
 /// \param surfaces The list of surfaces
 inline void free_temp_surfaces(struct Surface **surfaces) {
 
+    if (*surfaces == nullptr)
+        return;
+
     // The temporary surfaces and the other surfaces are shuffled in the list
 
     // ensure that the first surface is not temporary
@@ -465,6 +468,12 @@ static PyObject *method_add_light(RayCasterObject *self, PyObject *args, PyObjec
     if (blue > 1.0f)
         blue = 1.0f;
 
+    // test if one of the direction value is set but not the other
+    if (isnan(direction_x) != isnan(direction_y) || isnan(direction_x) != isnan(direction_z)) {
+        PyErr_SetString(PyExc_ValueError, "Directional light must have all direction values set or none");
+        return NULL;
+    }
+
     struct Light *light = (struct Light *) malloc(sizeof(struct Light));
     light->pos.x = light_x;
     light->pos.y = light_y;
@@ -498,6 +507,7 @@ static PyObject *method_clear_surfaces(RayCasterObject *self) {
         next = surface->next;
         free_surface(surface);
     }
+    self->surfaces = nullptr;
     Py_RETURN_NONE;
 }
 
@@ -1040,20 +1050,162 @@ void RayCaster_dealloc(RayCasterObject *self) {
         next = surface->next;
         free_surface(surface);
     }
+    struct Light *next_light;
+    for (struct Light *light = self->lights; light != nullptr; light = next_light) {
+        next_light = light->next;
+        free(light);
+    }
+
     free(self->dither_matrix);
 
     Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
 static PyMethodDef CasterMethods[] = {
-        {"add_surface", (PyCFunction) method_add_surface, METH_VARARGS | METH_KEYWORDS, "Adds a surface to the caster."},
-        {"add_plane", (PyCFunction) method_add_plane, METH_VARARGS | METH_KEYWORDS, "Adds a plane to the caster."},
-        {"add_wall", (PyCFunction) method_add_wall, METH_VARARGS | METH_KEYWORDS, "Adds a wall to the caster."},
+        {"add_surface", (PyCFunction) method_add_surface, METH_VARARGS | METH_KEYWORDS,
+         "Adds a surface to the caster.\n\n"
+         ":param image: The pygame surface to display in the scene.\n"
+            ":type image: pygame.Surface\n"
+         ":param A_x: The x coordinate of the first vertex.\n"
+            ":type A_x: float\n"
+         ":param A_y: The y coordinate of the first vertex.\n"
+            ":type A_y: float\n"
+         ":param A_z: The z coordinate of the first vertex.\n"
+            ":type A_z: float\n"
+         ":param B_x: The x coordinate of the second vertex.\n"
+            ":type B_x: float\n"
+         ":param B_y: The y coordinate of the second vertex.\n"
+            ":type B_y: float\n"
+         ":param B_z: The z coordinate of the second vertex.\n"
+            ":type B_z: float\n"
+         ":param C_x: The x coordinate of the third vertex.\n"
+            ":type C_x: float\n"
+         ":param C_y: The y coordinate of the third vertex.\n"
+            ":type C_y: float\n"
+         ":param C_z: The z coordinate of the third vertex.\n"
+            ":type C_z: float\n"
+         ":param alpha: The alpha value of the surface (1.0 by default).\n"
+            ":type alpha: float\n"
+         ":param rm: Whether or not the surface should be remove from the scene after being displayed (False by default).\n"
+            ":type rm: bool\n"
+         ":param reverse: Whether or not the surface should be displayed in reverse (False by default).\n"
+            ":type reverse: bool\n"
+         ":raise ValueError: If the given image is not a valid surface.\n"},
+        {"add_plane", (PyCFunction) method_add_plane, METH_VARARGS | METH_KEYWORDS,
+         "Adds a quadrilateral to the caster.\n\n"
+         ":param image: The pygame surface to display in the scene.\n"
+         ":type image: pygame.Surface\n"
+         ":param A_x: The x coordinate of the first vertex.\n"
+         ":type A_x: float\n"
+         ":param A_y: The y coordinate of the first vertex.\n"
+         ":type A_y: float\n"
+         ":param A_z: The z coordinate of the first vertex.\n"
+         ":type A_z: float\n"
+         ":param B_x: The x coordinate of the second vertex.\n"
+         ":type B_x: float\n"
+         ":param B_y: The y coordinate of the second vertex.\n"
+         ":type B_y: float\n"
+         ":param B_z: The z coordinate of the second vertex.\n"
+         ":type B_z: float\n"
+         ":param C_x: The x coordinate of the third vertex.\n"
+         ":type C_x: float\n"
+         ":param C_y: The y coordinate of the third vertex.\n"
+         ":type C_y: float\n"
+         ":param C_z: The z coordinate of the third vertex.\n"
+         ":type C_z: float\n"
+         ":param alpha: The alpha value of the surface (1.0 by default).\n"
+         ":type alpha: float\n"
+         ":param rm: Whether or not the surface should be remove from the scene after being displayed (False by default).\n"
+         ":type rm: bool\n"
+         ":raise ValueError: If the given image is not a valid surface.\n"},
+        {"add_wall", (PyCFunction) method_add_wall, METH_VARARGS | METH_KEYWORDS,
+         "Adds a wall to the caster.\n\n"
+         ":param image: The pygame surface to display in the scene.\n"
+         ":type image: pygame.Surface\n"
+         ":param A_x: The x coordinate of the first vertex.\n"
+         ":type A_x: float\n"
+         ":param A_y: The y coordinate of the first vertex.\n"
+         ":type A_y: float\n"
+         ":param A_z: The z coordinate of the first vertex.\n"
+         ":type A_z: float\n"
+         ":param B_x: The x coordinate of the second vertex.\n"
+         ":type B_x: float\n"
+         ":param B_y: The y coordinate of the second vertex.\n"
+         ":type B_y: float\n"
+         ":param B_z: The z coordinate of the second vertex.\n"
+         ":type B_z: float\n"
+         ":param alpha: The alpha value of the surface (1.0 by default).\n"
+         ":type alpha: float\n"
+         ":param rm: Whether or not the surface should be remove from the scene after being displayed (False by default).\n"
+         ":type rm: bool\n"
+         ":raise ValueError: If the given image is not a valid surface.\n"},
         {"clear_surfaces", (PyCFunction) method_clear_surfaces, METH_NOARGS, "Clears all surfaces from the caster."},
-        {"add_light", (PyCFunction) method_add_light, METH_VARARGS | METH_KEYWORDS, "Adds a light to the scene."},
+        {"add_light", (PyCFunction) method_add_light, METH_VARARGS | METH_KEYWORDS,
+         "Adds a light to the scene.\n\n"
+         ":param x: The x coordinate of the light.\n"
+         ":type x: float\n"
+         ":param y: The y coordinate of the light.\n"
+         ":type y: float\n"
+         ":param z: The z coordinate of the light.\n"
+         ":type z: float\n"
+         ":param intensity: The intensity of the light (1.0 by default).\n"
+         ":type intensity: float\n"
+         ":param red: The red component of the light (1.0 by default).\n"
+         ":type red: float\n"
+         ":param green: The green component of the light (1.0 by default).\n"
+         ":type green: float\n"
+         ":param blue: The blue component of the light (1.0 by default).\n"
+         ":type blue: float\n"
+         ":param direction_x: The x component of the light direction (None by default).\n"
+         ":type direction_x: float\n"
+         ":param direction_y: The y component of the light direction (None by default).\n"
+         ":type direction_y: float\n"
+         ":param direction_z: The z component of the light direction (None by default).\n"
+         ":type direction_z: float\n"},
         {"clear_lights", (PyCFunction) method_clear_lights, METH_NOARGS, "Clears all lights from the caster."},
-        {"render", (PyCFunction) method_raycasting, METH_VARARGS | METH_KEYWORDS, "Display the scene using raycasting."},
-        {"single_cast", (PyCFunction) method_single_cast, METH_VARARGS | METH_KEYWORDS, "Compute a single raycast and return the position in space of the closest intersection."},
+        {"render", (PyCFunction) method_raycasting, METH_VARARGS | METH_KEYWORDS,
+         "Render the scene from the given position.\n\n"
+         ":param dst_surface: The destination surface.\n"
+         ":type dst_surface: pygame.Surface\n"
+         ":param x: The x coordinate of the camera.\n"
+         ":type x: float\n"
+         ":param y: The y coordinate of the camera.\n"
+         ":type y: float\n"
+         ":param z: The z coordinate of the camera.\n"
+         ":type z: float\n"
+         ":param angle_x: The x angle of the camera.\n"
+         ":type angle_x: float\n"
+         ":param angle_y: The y angle of the camera.\n"
+         ":type angle_y: float\n"
+         ":param fov: The field of view of the camera.\n"
+         ":type fov: float\n"
+         ":param view_distance: The view distance of the camera.\n"
+         ":type view_distance: float\n"
+         ":param rad: Whether or not the angles are in radians (False by default).\n"
+         ":type rad: bool\n"
+         ":param threads: The number of threads to use for the rendering (1 by default). Set to -1 to use the maximum amount of threads.\n"
+         ":type threads: int\n"
+         ":raise ValueError: If the given destination surface is not a valid surface.\n"
+         },
+        {"single_cast", (PyCFunction) method_single_cast, METH_VARARGS | METH_KEYWORDS,
+         "Compute a single raycast and return the distance to the closest intersection.\n\n"
+         ":param x: The x coordinate of the origin of the raycast.\n"
+         ":type x: float\n"
+         ":param y: The y coordinate of the origin of the raycast.\n"
+         ":type y: float\n"
+         ":param z: The z coordinate of the origin of the raycast.\n"
+         ":type z: float\n"
+         ":param angle_x: The x angle of the ray.\n"
+         ":type angle_x: float\n"
+         ":param angle_y: The y angle of the ray.\n"
+         ":type angle_y: float\n"
+         ":param max_distance: The maximum length of the ray.\n"
+         ":type max_distance: float\n"
+         ":param rad: Whether or not the angles are in radians (False by default).\n"
+         ":type rad: bool\n"
+         ":return: The distance to the closest intersection. If no intersection is found, return the max_distance\n"
+         ":rtype: float\n"
+         },
         {NULL, NULL, 0, NULL}
 };
 
