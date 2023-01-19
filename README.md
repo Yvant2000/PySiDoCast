@@ -36,14 +36,15 @@ scene = RayCaster()
 # Add the image into the scene
 scene.add_wall(image, -1, 2, 3, 1, 0, 1)
 
-# Render the scene
-scene.render(screen, 0, 1, 0, 0, 90, fov=60)
-
-# Update the screen
-pygame.display.update()
-
 # Main Loop
 while True:
+
+    # Render the scene
+    scene.render(screen, 0, 1, 0, 0, 90, fov=60)
+
+    # Update the screen
+    pygame.display.update()
+
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             exit()
