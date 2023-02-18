@@ -21,7 +21,7 @@ Here is a basic example of how to use PySiDoCast to render a 3D scene:
 
 ```Python
 import pygame
-from pysidocast import RayCaster
+from pysidocast import Scene
 
 # Initialize Pygame
 pygame.init()
@@ -31,16 +31,16 @@ screen = pygame.display.set_mode((480, 480))
 image = pygame.image.load(".\\img.png").convert_alpha()  # using ".convert_alpha()" is MANDATORY
 
 # Create a new Scene
-scene = RayCaster()
+scene = Scene()
 
 # Add the image into the scene
-scene.add_wall(image, -1, 2, 3, 1, 0, 1)
+scene.add_wall(image, (-1, 2, 3), (1, 0, 1))
 
 # Main Loop
 while True:
 
     # Render the scene
-    scene.render(screen, 0, 1, 0, 0, 90, fov=60)
+    scene.render(screen, (0, 1, 0), 0, 90, fov=60)
 
     # Update the screen
     pygame.display.update()

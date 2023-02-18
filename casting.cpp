@@ -227,46 +227,80 @@ inline bool _get_3DBuffer_from_Surface(PyObject *img, Py_buffer *buffer) {
     return false;
 }
 
-/// Add a surface to the list of surfaces in the raycaster
+
+/// Gets a float from a tuple
+/// \param tuple    the tuple
+/// \param index    the index of the item
+/// \param result   pointer where the result will be stored
+/// \return         0 on success, -1 on error
+inline int _get_float_from_tuple(PyObject *tuple, int index, float *result) {
+    PyObject *arg = PyLong_FromLong(index);
+    PyObject *item;
+    if (!(item = PyObject_GetItem(tuple, arg))) {
+        printf("Can't access index %d\n", index);
+        Py_DECREF(arg);
+        return -1;
+    }
+
+    *result = (float)PyFloat_AsDouble(item);
+    Py_DECREF(arg);
+    Py_DECREF(item);
+
+    if (PyErr_Occurred()) {
+        printf("Error: Could not convert item %d to float", index);
+        return -1;
+    }
+    return 0;
+}
+
+/// Gets a vec3 from a tuple
+/// \param tuple    the tuple
+/// \param v        pointer where the result will be stored
+/// \return         0 on success, -1 on error
+inline int _get_vec3_from_tuple(PyObject *tuple, vec3 *v) {
+    if (_get_float_from_tuple(tuple, 0, &(v->x))
+    || _get_float_from_tuple(tuple, 1, &(v->y))
+    || _get_float_from_tuple(tuple, 2, &(v->z)))
+        return -1;
+    return 0;
+}
+
+/// Add a triangle to the list of surfaces in the raycaster
 /// \param self The raycaster object
 /// \param args The position arguments passed to the function
 /// \param kwargs The keyword arguments passed to the function
 /// \return (Python) None
-static PyObject *method_add_surface(RayCasterObject *self, PyObject *args, PyObject *kwargs) {
+static PyObject *method_add_triangle(RayCasterObject *self, PyObject *args, PyObject *kwargs) {
     PyObject *surface_image;
 
-    float A_x;
-    float A_y;
-    float A_z;
-
-    float B_x;
-    float B_y;
-    float B_z;
-
-    float C_x;
-    float C_y;
-    float C_z;
+    PyObject *py_A;
+    PyObject *py_B;
+    PyObject *py_C;
 
     float alpha = 1.0f;
 
     bool del = false;
     bool reverse = false;
 
-    static char *kwlist[] = {"image", "A_x", "A_y", "A_z", "B_x", "B_y", "B_z","C_x", "C_y", "C_z","alpha", "rm", "reverse", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Offfffffff|fpp", kwlist,
-                                     &surface_image, &A_x, &A_y, &A_z, &B_x, &B_y, &B_z, &C_x, &C_y, &C_z, &alpha, &del, &reverse))
+    static char *kwlist[] = {"image", "A", "B","C","alpha", "rm", "reverse", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOO|fpp", kwlist,
+                                     &surface_image, &py_A, &py_B, &py_C, &alpha, &del, &reverse))
         return NULL;
 
+    vec3 A;
+    vec3 B;
+    vec3 C;
+
+    if (_get_vec3_from_tuple(py_A, &A)
+    || _get_vec3_from_tuple(py_B, &B)
+    || _get_vec3_from_tuple(py_C, &C)) {
+        return NULL;
+    }
+
     struct Surface *surface = (struct Surface *) malloc(sizeof(struct Surface));
-    surface->pos.A.x = A_x;
-    surface->pos.A.y = A_y;
-    surface->pos.A.z = A_z;
-    surface->pos.B.x = B_x;
-    surface->pos.B.y = B_y;
-    surface->pos.B.z = B_z;
-    surface->pos.C.x = C_x;
-    surface->pos.C.y = C_y;
-    surface->pos.C.z = C_z;
+    surface->pos.A = A;
+    surface->pos.B = B;
+    surface->pos.C = C;
 
     surface->alpha = alpha;
 
@@ -287,60 +321,50 @@ static PyObject *method_add_surface(RayCasterObject *self, PyObject *args, PyObj
     Py_RETURN_NONE;
 }
 
-/// Add a plane (two triangles) to the list of surfaces in the raycaster
+/// Add a surface (two triangles) to the list of surfaces in the raycaster
 /// \param self The raycaster object
 /// \param args The position arguments passed to the function
 /// \param kwargs The keyword arguments passed to the function
 /// \return (Python) None
-static PyObject *method_add_plane(RayCasterObject *self, PyObject *args, PyObject *kwargs) {
+static PyObject *method_add_surface(RayCasterObject *self, PyObject *args, PyObject *kwargs) {
     PyObject *surface_image;
 
-    float A_x;
-    float A_y;
-    float A_z;
-
-    float B_x;
-    float B_y;
-    float B_z;
-
-    float C_x;
-    float C_y;
-    float C_z;
+    PyObject *py_A;
+    PyObject *py_B;
+    PyObject *py_C;
 
     float alpha = 1.0f;
 
     bool del = false;
 
-    static char *kwlist[] = {"image", "A_x", "A_y", "A_z", "B_x", "B_y", "B_z","C_x", "C_y", "C_z","alpha", "rm", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Offfffffff|fp", kwlist,
-                                     &surface_image, &A_x, &A_y, &A_z, &B_x, &B_y, &B_z, &C_x, &C_y, &C_z, &alpha, &del))
+    static char *kwlist[] = {"image", "A", "B","C","alpha", "rm", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOO|fp", kwlist,
+                                     &surface_image, &py_A, &py_B, &py_C, &alpha, &del))
         return NULL;
 
+    vec3 A;
+    vec3 B;
+    vec3 C;
+
+    if (_get_vec3_from_tuple(py_A, &A)
+        || _get_vec3_from_tuple(py_B, &B)
+        || _get_vec3_from_tuple(py_C, &C)) {
+        return NULL;
+    }
+
     struct Surface *surface = (struct Surface *) malloc(sizeof(struct Surface));
-    surface->pos.A.x = A_x;
-    surface->pos.A.y = A_y;
-    surface->pos.A.z = A_z;
-    surface->pos.B.x = B_x;
-    surface->pos.B.y = B_y;
-    surface->pos.B.z = B_z;
-    surface->pos.C.x = C_x;
-    surface->pos.C.y = C_y;
-    surface->pos.C.z = C_z;
+    surface->pos.A = A;
+    surface->pos.B = B;
+    surface->pos.C = C;
     surface->alpha = alpha;
     surface->parent = surface_image;
     surface->del = del;
     surface->reverse = false;
 
     struct Surface *surface2 = (struct Surface *) malloc(sizeof(struct Surface));
-    surface2->pos.A.x = C_x + B_x - A_x;
-    surface2->pos.A.y = C_y + B_y - A_y;
-    surface2->pos.A.z = C_z + B_z - A_z;
-    surface2->pos.B.x = C_x;
-    surface2->pos.B.y = C_y;
-    surface2->pos.B.z = C_z;
-    surface2->pos.C.x = B_x;
-    surface2->pos.C.y = B_y;
-    surface2->pos.C.z = B_z;
+    surface2->pos.A = vec3_sub(vec3_add(C, B), A);
+    surface2->pos.B = C;
+    surface2->pos.C = B;
     surface2->alpha = alpha;
     surface2->parent = surface_image;
     surface2->del = del;
@@ -375,48 +399,47 @@ static PyObject *method_add_plane(RayCasterObject *self, PyObject *args, PyObjec
 static PyObject *method_add_wall(RayCasterObject *self, PyObject *args, PyObject *kwargs) {
     PyObject *surface_image;
 
-    float A_x;
-    float A_y;
-    float A_z;
-
-    float B_x;
-    float B_y;
-    float B_z;
+    PyObject *py_A;
+    PyObject *py_B;
 
     float alpha = 1.0f;
 
     bool del = false;
 
-    static char *kwlist[] = {"image", "A_x", "A_y", "A_z", "B_x", "B_y", "B_z","alpha", "rm", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Offffff|fp", kwlist,
-                                     &surface_image, &A_x, &A_y, &A_z, &B_x, &B_y, &B_z, &alpha, &del))
+    static char *kwlist[] = {"image", "A", "B","alpha", "rm", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOO|fp", kwlist,
+                                     &surface_image, &py_A, &py_B, &alpha, &del))
         return NULL;
 
+    vec3 A;
+    vec3 B;
+
+    if (_get_vec3_from_tuple(py_A, &A)
+        || _get_vec3_from_tuple(py_B, &B)) {
+        return NULL;
+    }
+
     struct Surface *surface = (struct Surface *) malloc(sizeof(struct Surface));
-    surface->pos.A.x = A_x;
-    surface->pos.A.y = A_y;
-    surface->pos.A.z = A_z;
-    surface->pos.B.x = B_x;
-    surface->pos.B.y = A_y;
-    surface->pos.B.z = B_z;
-    surface->pos.C.x = A_x;
-    surface->pos.C.y = B_y;
-    surface->pos.C.z = A_z;
+    surface->pos.A = A;
+    surface->pos.B.x = B.x;
+    surface->pos.B.y = A.y;
+    surface->pos.B.z = B.z;
+    surface->pos.C.x = A.x;
+    surface->pos.C.y = B.y;
+    surface->pos.C.z = A.z;
     surface->alpha = alpha;
     surface->parent = surface_image;
     surface->del = del;
     surface->reverse = false;
 
     struct Surface *surface2 = (struct Surface *) malloc(sizeof(struct Surface));
-    surface2->pos.A.x = B_x;
-    surface2->pos.A.y = B_y;
-    surface2->pos.A.z = B_z;
-    surface2->pos.B.x = A_x;
-    surface2->pos.B.y = B_y;
-    surface2->pos.B.z = A_z;
-    surface2->pos.C.x = B_x;
-    surface2->pos.C.y = A_y;
-    surface2->pos.C.z = B_z;
+    surface2->pos.A = B;
+    surface2->pos.B.x = A.x;
+    surface2->pos.B.y = B.y;
+    surface2->pos.B.z = A.z;
+    surface2->pos.C.x = B.x;
+    surface2->pos.C.y = A.y;
+    surface2->pos.C.z = B.z;
     surface2->alpha = alpha;
     surface2->parent = surface_image;
     surface2->del = del;
@@ -442,9 +465,7 @@ static PyObject *method_add_wall(RayCasterObject *self, PyObject *args, PyObject
 
 
 static PyObject *method_add_light(RayCasterObject *self, PyObject *args, PyObject *kwargs) {
-    float light_x;
-    float light_y;
-    float light_z;
+    PyObject *py_light;
 
     float light_intensity = 1.0;
 
@@ -452,14 +473,24 @@ static PyObject *method_add_light(RayCasterObject *self, PyObject *args, PyObjec
     float green = 1.0;
     float blue = 1.0;
 
-    float direction_x = FP_NAN;  // default value for non directional lights
-    float direction_y = FP_NAN;
-    float direction_z = FP_NAN;
+    PyObject *py_direction = NULL;
 
-    static char *kwlist[] = {"x", "y", "z", "intensity", "red", "green", "blue", "direction_x", "direction_y", "direction_z", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "fff|fffffff", kwlist, &light_x, &light_y, &light_z, &light_intensity,
-                                     &red, &green, &blue, &direction_x, &direction_y, &direction_z))
+    static char *kwlist[] = {"position", "intensity", "red", "green", "blue", "direction", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|ffffO", kwlist,
+                                     &py_light, &light_intensity, &red, &green, &blue, &py_direction))
         return NULL;
+
+    vec3 light_pos;
+    if (_get_vec3_from_tuple(py_light, &light_pos)) {
+        return NULL;
+    }
+
+    vec3 light_dir = {FP_NAN, FP_NAN, FP_NAN};
+    if (py_direction)
+        if (_get_vec3_from_tuple(py_direction, &light_dir))
+            return NULL;
+
+
 
     if (red > 1.0f)  // clamp the color values
         red = 1.0f;
@@ -468,31 +499,27 @@ static PyObject *method_add_light(RayCasterObject *self, PyObject *args, PyObjec
     if (blue > 1.0f)
         blue = 1.0f;
 
-    // test if one of the direction value is set but not the other
-    if (isnan(direction_x) != isnan(direction_y) || isnan(direction_x) != isnan(direction_z)) {
-        PyErr_SetString(PyExc_ValueError, "Directional light must have all direction values set or none");
-        return NULL;
-    }
+//    // test if one of the direction value is set but not the other
+//    if (isnan(direction_x) != isnan(direction_y) || isnan(direction_x) != isnan(direction_z)) {
+//        PyErr_SetString(PyExc_ValueError, "Directional light must have all direction values set or none");
+//        return NULL;
+//    }
 
     struct Light *light = (struct Light *) malloc(sizeof(struct Light));
-    light->pos.x = light_x;
-    light->pos.y = light_y;
-    light->pos.z = light_z;
+    light->pos = light_pos;
     light->intensity = light_intensity;
     light->r = red;
     light->g = green;
     light->b = blue;
-    light->direction.x = direction_x;
-    light->direction.y = direction_y;
-    light->direction.z = direction_z;
+    light->direction = light_dir;
     light->next = self->lights;
 
     self->use_lighting = true;
     self->lights = light;
 
     self->lights->pos_direction_distance = FP_NAN;
-    if (direction_x != FP_NAN && direction_y != FP_NAN && direction_z != FP_NAN)
-        self->lights->pos_direction_distance = vec3_dist(self->lights->pos, self->lights->direction);
+    if (py_direction)
+        self->lights->pos_direction_distance = vec3_dist(light_pos, light_dir);
 
     Py_RETURN_NONE;
 }
@@ -720,18 +747,16 @@ bool thread_quit;   // Tells the threads to quit once they are done with their c
 RayCasterObject *t_raycaster;  // Raycaster object
 float t_view_distance;  // View distance of the current scene
 Py_ssize_t t_width;  // width of the current screen (for some reason we don't need the height)
-float t_forward_x;  // I don't remember what this is, but it's used in the ray calculation
-float t_forward_z;  // No idea
-float t_right_x;    // i forgor 💀
-float t_right_z;    // Don't touch this anyway
-struct vec3 t_A;    // This is the position of the camera (i rember 😁)
+
+vec3 t_width_vector;  // vector from the top right corner of the screen to the top left corner divided by the width of the screen
+struct vec3 t_A;    // This is the position of the camera
 
 
 /// data for each individual thread
 struct thread_args {          // a few args the thread needs to compute the pixel
     unsigned long *buf;      // where to write the pixel
     Py_ssize_t pixel_index;  // index of the pixel
-    float y;
+    vec3 proj;               // projection of the pixel
 };
 
 
@@ -755,26 +780,17 @@ void thread_worker()
         queue_mutex.unlock();  // release the lock so other threads can get their args
 
 
-        unsigned long *buf = args->buf;
-        Py_ssize_t pixel_index_y = args->pixel_index;
-        float y = args->y;
+        unsigned long *buf = args -> buf;
+        Py_ssize_t pixel_index_y = args -> pixel_index;
+        vec3 proj = args -> proj;
         free(args);
 
         struct pos2 ray;
         ray.A = t_A;
-        ray.B.y = y;
-
-
-        float progress_x = 0.5f;
-        float d_progress_x = 1.0f / (float)t_width;
+        ray.B = proj;
 
         for (Py_ssize_t dst_x = t_width; dst_x; --dst_x) {
-            progress_x -= d_progress_x;
-            // float progress_x = 0.5f - dst_x * d_progress_x;
-
-            ray.B.x = t_forward_x + progress_x * t_right_x;
-            // ray.B.y = y_;
-            ray.B.z = t_forward_z + progress_x * t_right_z;
+            ray.B = vec3_add(ray.B, t_width_vector);
 
             long pixel = get_pixel_at(t_raycaster, ray, dst_x, pixel_index_y, t_view_distance);
             if (pixel)
@@ -799,23 +815,26 @@ void thread_worker()
 static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObject *kwargs) {
     PyObject *screen;
 
-    float x = 0.f;
-    float y = 0.f;
-    float z = 0.f;
+    PyObject *py_pos;
 
     float angle_x = 0.f;
     float angle_y = 0.f;
 
-    float fov = 120.f;
+    float fov = 70.f;
     float view_distance = 1000.f;
     bool rad = false;
 
     int thread_count = 1;
 
-    static char *kwlist[] = {"dst_surface", "x", "y", "z", "angle_x", "angle_y", "fov", "view_distance", "rad", "threads", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|fffffffpi", kwlist,
-                                     &screen, &x, &y, &z, &angle_x, &angle_y, &fov, &view_distance, &rad, &thread_count))
+    static char *kwlist[] = {"dst_surface", "pos", "angle_x", "angle_y", "fov", "view_distance", "rad", "threads", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OO|ffffpi", kwlist,
+                                     &screen, &py_pos, &angle_x, &angle_y, &fov, &view_distance, &rad, &thread_count))
         return NULL;
+
+    vec3 pos;
+    if (_get_vec3_from_tuple(py_pos, &pos))
+        return NULL;
+
 
     if(fov <= 0.f) {
         PyErr_SetString(PyExc_ValueError, "fov must be greater than 0");
@@ -862,33 +881,53 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
 
     // compute a bunch of variables before the loop to avoid computing them at each iteration.
 
-    float projection_plane_width = 2 * tan(fov);
+    float cos_x = cosf(angle_x);
+    float cos_y = cosf(angle_y);
+    float sin_x = sinf(angle_x);
+    float sin_y = sinf(angle_y);
+
+    float projection_plane_width = 2 * tanf(fov/2);
     float projection_plane_height = projection_plane_width * (float)height / (float)width;
 
-    float forward_x = cosf(angle_y) * view_distance;
-    float forward_y = sinf(angle_x) * projection_plane_height * view_distance;
-    float forward_z = sinf(angle_y) * view_distance;
+    /// top_right(x, y, z) is the position in space of the top right corner of the projection plane (let's say the center of the projection plane is at the pos (0,0,0))
 
-    float right_x = -forward_z * projection_plane_width;
-    float right_y = projection_plane_height * view_distance;
-    float right_z = forward_x * projection_plane_width;
+    vec3 top_right = {
+            -sin_y * projection_plane_width/2 - cos_y * sin_x * projection_plane_height/2,
+            projection_plane_height/2 * cos_x,
+            cos_y * projection_plane_width/2 - sin_y * sin_x * projection_plane_height/2
+    };
 
-    float d_progress_y = 1.f / (float)height;
-//    float d_progress_x = 1.f / (float)width;
+    /// forward(x, y, z) is the position in space far in front of the camera (let's say the camera is at the pos (0,0,0))
 
-//    struct pos2 ray;
-//    ray.A = {x, y, z};
+    vec3 forward = {
+            cos_y * cos_x,
+            sin_x,
+            sin_y * cos_x
+    };
+
+    vec3 projection = vec3_add(forward, top_right);
+
+    // vector from the top right corner to the top left corner divided by the width of the screen
+    vec3 width_vector = {
+            sin_y * projection_plane_width / (float)width,
+            0,
+            -cos_y * projection_plane_width / (float)width
+    };
+
+    // vector from the top right corner to the bottom right corner divided by the height of the screen
+    vec3 height_vector = {
+            cos_y * sin_x * projection_plane_height / (float)height,
+            -cos_x * projection_plane_height / (float)height,
+            sin_y * sin_x * projection_plane_height / (float)height
+    };
 
     // SHARED DATA between threads
     // all shared data have a t_ prefix
     t_raycaster = self;
     t_view_distance = view_distance;
     t_width = width;
-    t_forward_x = forward_x;
-    t_forward_z = forward_z;
-    t_right_x = right_x;
-    t_right_z = right_z;
-    t_A = {x, y, z};
+    t_width_vector = width_vector;
+    t_A = pos;
 
     thread_quit = false;
     thread **threads = (thread **)malloc(sizeof(thread *) * thread_count);
@@ -896,20 +935,15 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
         threads[i] = new thread(thread_worker);  // C++ threads 💀 (pthreads ? never heard of them.)
 
 
-    float progress_y = 0.5f;
     for (Py_ssize_t dst_y = height; dst_y; --dst_y) {
 
-        progress_y -= d_progress_y;
-//        progress_y = 0.5 - d_progress_y * dst_y;
-
-        // ray.B.y = forward_y + progress_y * right_y; // computed once for each thread
-
+        projection = vec3_add(projection, height_vector);
 
         struct thread_args *t_args = (struct thread_args *)malloc(sizeof(struct thread_args));
 
         t_args -> buf =  (unsigned long *) ((unsigned char *) (buf) - 2);
         t_args -> pixel_index = dst_y;
-        t_args -> y = forward_y + progress_y * right_y;
+        t_args -> proj = projection;
 
         queue_mutex.lock(); // mandatory lock
         args_queue.push(t_args);
@@ -963,9 +997,8 @@ float get_closest_intersection(pos2 ray, float max_distance, struct Surface *sur
 /// \param kwargs   the keyword arguments
 /// \return         the distance to the closest intersection. The exact position can be computed by multiplying the returned distance by the direction vector.
 static PyObject *method_single_cast(RayCasterObject *self, PyObject *args, PyObject *kwargs) {
-    float origin_x = 0.f;
-    float origin_y = 0.f;
-    float origin_z = 0.f;
+
+    PyObject *py_origin;
 
     float angle_x = 0.f;
     float angle_y = 0.f;
@@ -974,9 +1007,13 @@ static PyObject *method_single_cast(RayCasterObject *self, PyObject *args, PyObj
 
     bool rad = false;
 
-    static char *kwlist[] = {"x", "y", "z", "angle_x", "angle_y", "max_distance", "rad", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|ffffffp", kwlist,
-                                     &origin_x, &origin_y, &origin_z, &angle_x, &angle_y, &max_distance, &rad))
+    static char *kwlist[] = {"origin", "angle_x", "angle_y", "max_distance", "rad", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|fffp", kwlist,
+                                     &py_origin, &angle_x, &angle_y, &max_distance, &rad))
+        return NULL;
+
+    vec3 origin;
+    if (_get_vec3_from_tuple(py_origin, &origin))
         return NULL;
 
     if (max_distance <= 0.f) {
@@ -990,8 +1027,10 @@ static PyObject *method_single_cast(RayCasterObject *self, PyObject *args, PyObj
     }
 
     struct pos2 ray;
-    ray.A = {origin_x, origin_y, origin_z};
-    ray.B = {cosf(angle_y) * max_distance, sinf(angle_x) * max_distance, sinf(angle_y) * max_distance};
+    ray.A = origin;
+    ray.B = {cosf(angle_y) * max_distance * cosf(angle_x),
+             sinf(angle_x) * max_distance,
+             sinf(angle_y) * max_distance * cosf(angle_x)};
 
     return Py_BuildValue("f", get_closest_intersection(ray, max_distance, self->surfaces));
 }
@@ -1062,28 +1101,16 @@ void RayCaster_dealloc(RayCasterObject *self) {
 }
 
 static PyMethodDef CasterMethods[] = {
-        {"add_surface", (PyCFunction) method_add_surface, METH_VARARGS | METH_KEYWORDS,
-         "Adds a surface to the caster.\n\n"
+        {"add_triangle", (PyCFunction) method_add_triangle, METH_VARARGS | METH_KEYWORDS,
+         "Adds a triangle to the caster.\n\n"
          ":param image: The pygame surface to display in the scene.\n"
             ":type image: pygame.Surface\n"
-         ":param A_x: The x coordinate of the first vertex.\n"
-            ":type A_x: float\n"
-         ":param A_y: The y coordinate of the first vertex.\n"
-            ":type A_y: float\n"
-         ":param A_z: The z coordinate of the first vertex.\n"
-            ":type A_z: float\n"
-         ":param B_x: The x coordinate of the second vertex.\n"
-            ":type B_x: float\n"
-         ":param B_y: The y coordinate of the second vertex.\n"
-            ":type B_y: float\n"
-         ":param B_z: The z coordinate of the second vertex.\n"
-            ":type B_z: float\n"
-         ":param C_x: The x coordinate of the third vertex.\n"
-            ":type C_x: float\n"
-         ":param C_y: The y coordinate of the third vertex.\n"
-            ":type C_y: float\n"
-         ":param C_z: The z coordinate of the third vertex.\n"
-            ":type C_z: float\n"
+         ":param A: The position in space (x,y,z) of the first vertex.\n"
+            ":type A: tuple\n"
+         ":param B: The position in space (x,y,z) of the second vertex.\n"
+            ":type B: tuple\n"
+         ":param C: The position in space (x,y,z) of the third vertex.\n"
+            ":type C: tuple\n"
          ":param alpha: The alpha value of the surface (1.0 by default).\n"
             ":type alpha: float\n"
          ":param rm: Whether or not the surface should be remove from the scene after being displayed (False by default).\n"
@@ -1091,63 +1118,43 @@ static PyMethodDef CasterMethods[] = {
          ":param reverse: Whether or not the surface should be displayed in reverse (False by default).\n"
             ":type reverse: bool\n"
          ":raise ValueError: If the given image is not a valid surface.\n"},
-        {"add_plane", (PyCFunction) method_add_plane, METH_VARARGS | METH_KEYWORDS,
-         "Adds a quadrilateral to the caster.\n\n"
+
+        {"add_surface", (PyCFunction) method_add_surface, METH_VARARGS | METH_KEYWORDS,
+         "Adds a quadrilateral (diamond shaped) to the caster.\n\n"
          ":param image: The pygame surface to display in the scene.\n"
          ":type image: pygame.Surface\n"
-         ":param A_x: The x coordinate of the first vertex.\n"
-         ":type A_x: float\n"
-         ":param A_y: The y coordinate of the first vertex.\n"
-         ":type A_y: float\n"
-         ":param A_z: The z coordinate of the first vertex.\n"
-         ":type A_z: float\n"
-         ":param B_x: The x coordinate of the second vertex.\n"
-         ":type B_x: float\n"
-         ":param B_y: The y coordinate of the second vertex.\n"
-         ":type B_y: float\n"
-         ":param B_z: The z coordinate of the second vertex.\n"
-         ":type B_z: float\n"
-         ":param C_x: The x coordinate of the third vertex.\n"
-         ":type C_x: float\n"
-         ":param C_y: The y coordinate of the third vertex.\n"
-         ":type C_y: float\n"
-         ":param C_z: The z coordinate of the third vertex.\n"
-         ":type C_z: float\n"
+         ":param A: The position (x,y,z) of the first vertex.\n"
+         ":type A: tuple\n"
+         ":param B: The position (x,y,z) of the second vertex.\n"
+         ":type B: tuple\n"
+         ":param C: The position (x,y,z) of the third vertex.\n"
+         ":type C: tuple\n"
          ":param alpha: The alpha value of the surface (1.0 by default).\n"
          ":type alpha: float\n"
          ":param rm: Whether or not the surface should be remove from the scene after being displayed (False by default).\n"
          ":type rm: bool\n"
          ":raise ValueError: If the given image is not a valid surface.\n"},
+
         {"add_wall", (PyCFunction) method_add_wall, METH_VARARGS | METH_KEYWORDS,
          "Adds a wall to the caster.\n\n"
          ":param image: The pygame surface to display in the scene.\n"
          ":type image: pygame.Surface\n"
-         ":param A_x: The x coordinate of the first vertex.\n"
-         ":type A_x: float\n"
-         ":param A_y: The y coordinate of the first vertex.\n"
-         ":type A_y: float\n"
-         ":param A_z: The z coordinate of the first vertex.\n"
-         ":type A_z: float\n"
-         ":param B_x: The x coordinate of the second vertex.\n"
-         ":type B_x: float\n"
-         ":param B_y: The y coordinate of the second vertex.\n"
-         ":type B_y: float\n"
-         ":param B_z: The z coordinate of the second vertex.\n"
-         ":type B_z: float\n"
+         ":param A: The position (x,y,z) of the first vertex.\n"
+         ":type A: tuple\n"
+         ":param B_x: The position (x,y,z) of the second vertex.\n"
+         ":type B_x: tuple\n"
          ":param alpha: The alpha value of the surface (1.0 by default).\n"
          ":type alpha: float\n"
          ":param rm: Whether or not the surface should be remove from the scene after being displayed (False by default).\n"
          ":type rm: bool\n"
          ":raise ValueError: If the given image is not a valid surface.\n"},
+
         {"clear_surfaces", (PyCFunction) method_clear_surfaces, METH_NOARGS, "Clears all surfaces from the caster."},
+
         {"add_light", (PyCFunction) method_add_light, METH_VARARGS | METH_KEYWORDS,
          "Adds a light to the scene.\n\n"
-         ":param x: The x coordinate of the light.\n"
-         ":type x: float\n"
-         ":param y: The y coordinate of the light.\n"
-         ":type y: float\n"
-         ":param z: The z coordinate of the light.\n"
-         ":type z: float\n"
+         ":param position: The position (x,y,z) of the light.\n"
+         ":type position: tuple\n"
          ":param intensity: The intensity of the light (1.0 by default).\n"
          ":type intensity: float\n"
          ":param red: The red component of the light (1.0 by default).\n"
@@ -1156,26 +1163,20 @@ static PyMethodDef CasterMethods[] = {
          ":type green: float\n"
          ":param blue: The blue component of the light (1.0 by default).\n"
          ":type blue: float\n"
-         ":param direction_x: The x component of the light direction (None by default).\n"
-         ":type direction_x: float\n"
-         ":param direction_y: The y component of the light direction (None by default).\n"
-         ":type direction_y: float\n"
-         ":param direction_z: The z component of the light direction (None by default).\n"
-         ":type direction_z: float\n"},
+         ":param direction: The light direction (x,y,z) (None by default).\n"
+         ":type direction: tuple\n"},
+
         {"clear_lights", (PyCFunction) method_clear_lights, METH_NOARGS, "Clears all lights from the caster."},
+
         {"render", (PyCFunction) method_raycasting, METH_VARARGS | METH_KEYWORDS,
          "Render the scene from the given position.\n\n"
          ":param dst_surface: The destination surface.\n"
          ":type dst_surface: pygame.Surface\n"
-         ":param x: The x coordinate of the camera.\n"
-         ":type x: float\n"
-         ":param y: The y coordinate of the camera.\n"
-         ":type y: float\n"
-         ":param z: The z coordinate of the camera.\n"
-         ":type z: float\n"
-         ":param angle_x: The x angle of the camera.\n"
+         ":param pos: The position of the camera.\n"
+         ":type pos: tuple\n"
+         ":param angle_x: The angle of the camera around the x axis (look up and down).\n"
          ":type angle_x: float\n"
-         ":param angle_y: The y angle of the camera.\n"
+         ":param angle_y: The y angle of the camera around the y axis (look left and right).\n"
          ":type angle_y: float\n"
          ":param fov: The field of view of the camera.\n"
          ":type fov: float\n"
@@ -1187,17 +1188,14 @@ static PyMethodDef CasterMethods[] = {
          ":type threads: int\n"
          ":raise ValueError: If the given destination surface is not a valid surface.\n"
          },
+
         {"single_cast", (PyCFunction) method_single_cast, METH_VARARGS | METH_KEYWORDS,
          "Compute a single raycast and return the distance to the closest intersection.\n\n"
-         ":param x: The x coordinate of the origin of the raycast.\n"
-         ":type x: float\n"
-         ":param y: The y coordinate of the origin of the raycast.\n"
-         ":type y: float\n"
-         ":param z: The z coordinate of the origin of the raycast.\n"
-         ":type z: float\n"
-         ":param angle_x: The x angle of the ray.\n"
+         ":param origin: The position (x,y,z) of the origin of the raycast.\n"
+         ":type origin: tuple\n"
+         ":param angle_x: The x angle of the ray around the x axis.\n"
          ":type angle_x: float\n"
-         ":param angle_y: The y angle of the ray.\n"
+         ":param angle_y: The y angle of the ray around the y axis.\n"
          ":type angle_y: float\n"
          ":param max_distance: The maximum length of the ray.\n"
          ":type max_distance: float\n"
@@ -1206,17 +1204,18 @@ static PyMethodDef CasterMethods[] = {
          ":return: The distance to the closest intersection. If no intersection is found, return the max_distance\n"
          ":rtype: float\n"
          },
+
         {NULL, NULL, 0, NULL}
 };
 
 static PyTypeObject RayCasterType = {
         .ob_base = PyVarObject_HEAD_INIT(NULL, 0)
-        .tp_name = "pysidocast.RayCaster",
+        .tp_name = "pysidocast.Scene",
         .tp_basicsize = sizeof(RayCasterObject),
         .tp_itemsize = 0,
         .tp_dealloc = (destructor) RayCaster_dealloc,
         .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
-        .tp_doc = PyDoc_STR("RayCaster Object"),
+        .tp_doc = PyDoc_STR("Scene Object"),
         .tp_methods = CasterMethods,
         .tp_new = (newfunc)RayCaster_new,
 };
@@ -1241,7 +1240,7 @@ PyMODINIT_FUNC PyInit_pysidocast(void) {
         return NULL;
 
     Py_INCREF(&RayCasterType);
-    if (PyModule_AddObject(m, "RayCaster", (PyObject *)&RayCasterType) < 0) {
+    if (PyModule_AddObject(m, "Scene", (PyObject *)&RayCasterType) < 0) {
         Py_DECREF(&RayCasterType);
         Py_DECREF(m);
         return NULL;
