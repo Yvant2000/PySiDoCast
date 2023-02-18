@@ -15,3 +15,6 @@ Contents
 
    Home <self>
    usage
+
+.. automodule:: pysidocast.main
+   :members:
