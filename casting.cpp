@@ -121,12 +121,9 @@ inline void free_temp_surfaces(struct Surface **surfaces) {
     while((*surfaces) -> del) {
         struct Surface *next = (*surfaces) -> next;
         free_surface(*surfaces);
-        *surfaces = next;
+        if (!(*surfaces = next)) // if all surfaces were temporary, return
+            return;
     }
-
-    // if all surfaces were temporary, return
-    if (*surfaces == nullptr)
-        return;
 
     // free the rest of the surfaces
     struct Surface *prev = *surfaces;
@@ -933,7 +930,6 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
     thread **threads = (thread **)malloc(sizeof(thread *) * thread_count);
     for (int i = thread_count - 1; i >= 0; --i)
         threads[i] = new thread(thread_worker);  // C++ threads 💀 (pthreads ? never heard of them.)
-
 
     for (Py_ssize_t dst_y = height; dst_y; --dst_y) {
 
