@@ -77,6 +77,13 @@ For example:
     :alt: A plane in the scene
 
 
+
+.. automethod:: pysidocast.Scene.add_quad(image, (x1,y1,z1), (x2,y2,z2), (x3,y3,z3), (x4,y4,z4), alpha=1.0, rm=False)
+
+.. note:: The ``add_quad()`` method is usefull for custom shapes, but most of the time it's easier to use ``add_wall()`` or ``add_surface()``.
+
+
+
 .. automethod:: pysidocast.Scene.add_wall(image, (x2,y2,z2), (x2,y2,z2), alpha=1.0, rm=False)
 
 .. note:: With the ``add_wall()`` method, the second and fourth vertex of the quadrilateral is automatically calculated to make a rectangle shape.

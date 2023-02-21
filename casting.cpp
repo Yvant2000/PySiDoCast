@@ -388,6 +388,77 @@ static PyObject *method_add_surface(RayCasterObject *self, PyObject *args, PyObj
 
 
 
+/// Add a quad (two triangles) to the list of surfaces in the raycaster
+/// \param self The raycaster object
+/// \param args The position arguments passed to the function
+/// \param kwargs The keyword arguments passed to the function
+/// \return (Python) None
+static PyObject *method_add_quad(RayCasterObject *self, PyObject *args, PyObject *kwargs) {
+    PyObject *surface_image;
+
+    PyObject *py_A;
+    PyObject *py_B;
+    PyObject *py_C;
+    PyObject *py_D;
+
+    float alpha = 1.0f;
+
+    bool del = false;
+
+    static char *kwlist[] = {"image", "A", "B","C","D","alpha", "rm", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOOO|fp", kwlist,
+                                     &surface_image, &py_A, &py_B, &py_C, &py_D, &alpha, &del))
+        return NULL;
+
+    vec3 A;
+    vec3 B;
+    vec3 C;
+    vec3 D;
+
+    if (_get_vec3_from_tuple(py_A, &A)
+        || _get_vec3_from_tuple(py_B, &B)
+        || _get_vec3_from_tuple(py_C, &C)
+        || _get_vec3_from_tuple(py_D, &D)) {
+        return NULL;
+    }
+
+    struct Surface *surface = (struct Surface *) malloc(sizeof(struct Surface));
+    surface->pos.A = A;
+    surface->pos.B = B;
+    surface->pos.C = D;
+    surface->alpha = alpha;
+    surface->parent = surface_image;
+    surface->del = del;
+    surface->reverse = false;
+
+    struct Surface *surface2 = (struct Surface *) malloc(sizeof(struct Surface));
+    surface2->pos.A = C;
+    surface2->pos.B = D;
+    surface2->pos.C = B;
+    surface2->alpha = alpha;
+    surface2->parent = surface_image;
+    surface2->del = del;
+    surface2->reverse = true;
+
+    if (_get_3DBuffer_from_Surface(surface_image, &surface->buffer)
+        || _get_3DBuffer_from_Surface(surface_image, &surface2->buffer)) {
+        PyErr_SetString(PyExc_ValueError, "Not a valid surface");
+        free(surface);
+        free(surface2);
+        return NULL;
+    }
+
+    Py_INCREF(surface_image); // We need to keep the surface alive to make sure the buffer is valid.
+    Py_INCREF(surface_image); // Two surfaces means we need to incref twice
+
+    surface->next = surface2;
+    surface2->next = self->surfaces; // Push the surface on top of the stack.
+    self->surfaces = surface;
+
+    Py_RETURN_NONE;
+}
+
+
 /// Add a wall (two triangles) to the list of surfaces in the raycaster
 /// \param self The raycaster object
 /// \param args The position arguments passed to the function
@@ -641,7 +712,7 @@ inline bool alpha_dither(float alpha, float *dither_matrix, Py_ssize_t x, Py_ssi
     if (alpha == 1.0f)  // pixel isn't transparent
         return false;
 
-    return alpha < dither_matrix[(y % DITHERING_SIZE) * DITHERING_SIZE + (x % DITHERING_SIZE)];  // TODO might add custom dether size
+    return alpha < dither_matrix[(y % DITHERING_SIZE) * DITHERING_SIZE + (x % DITHERING_SIZE)];
 }
 
 
@@ -776,7 +847,6 @@ void thread_worker()
         args_queue.pop();
         queue_mutex.unlock();  // release the lock so other threads can get their args
 
-
         unsigned long *buf = args -> buf;
         Py_ssize_t pixel_index_y = args -> pixel_index;
         vec3 proj = args -> proj;
@@ -787,17 +857,15 @@ void thread_worker()
         ray.B = proj;
 
         for (Py_ssize_t dst_x = t_width; dst_x; --dst_x) {
-            ray.B = vec3_add(ray.B, t_width_vector);
-
             long pixel = get_pixel_at(t_raycaster, ray, dst_x, pixel_index_y, t_view_distance);
+
             if (pixel)
                 *buf = pixel;
 
-//            pixel_index++;
+            ray.B = vec3_add(ray.B, t_width_vector);
+
             buf++;
         }
-
-
     }
 //    printf("THREAD ARGS: \n"
 //    "    buf = %p\n"
@@ -894,7 +962,7 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
             cos_y * projection_plane_width/2 - sin_y * sin_x * projection_plane_height/2
     };
 
-    /// forward(x, y, z) is the position in space far in front of the camera (let's say the camera is at the pos (0,0,0))
+    /// forward(x, y, z) is the position in space in front of the camera (let's say the camera is at the pos (0,0,0))
 
     vec3 forward = {
             cos_y * cos_x,
@@ -1130,6 +1198,25 @@ static PyMethodDef CasterMethods[] = {
          ":param rm: Whether or not the surface should be remove from the scene after being displayed (False by default).\n"
          ":type rm: bool\n"
          ":raise ValueError: If the given image is not a valid surface.\n"},
+
+        {"add_quad", (PyCFunction) method_add_quad, METH_VARARGS | METH_KEYWORDS,
+         "Adds a quad to the scene.\n\n"
+         ":param image: The pygame surface to display in the scene.\n"
+            ":type image: pygame.Surface\n"
+         ":param A: The position in space (x,y,z) of the first vertex.\n"
+            ":type A: tuple\n"
+         ":param B: The position in space (x,y,z) of the second vertex.\n"
+            ":type B: tuple\n"
+         ":param C: The position in space (x,y,z) of the third vertex.\n"
+            ":type C: tuple\n"
+         ":param D: The position in space (x,y,z) of the fourth vertex.\n"
+            ":type D: tuple\n"
+         ":param alpha: The alpha value of the surface (1.0 by default).\n"
+            ":type alpha: float\n"
+         ":param rm: Whether or not the surface should be remove from the scene after being displayed (False by default).\n"
+            ":type rm: bool\n"
+         "raise ValueError: If the given image is not a valid surface.\n"},
+
 
         {"add_wall", (PyCFunction) method_add_wall, METH_VARARGS | METH_KEYWORDS,
          "Adds a wall to the caster.\n\n"

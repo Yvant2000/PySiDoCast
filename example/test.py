@@ -45,10 +45,11 @@ scene.add_wall(transparent,
                (-1, 2, 0),
                (-1, 0, 2))
 
-scene.add_surface(image,
-                  (-1 + 0.5, 2, 2),
-                  (1, 2, 2),
-                  (-1, 0, 2))
+scene.add_quad(image,
+               (-1 + 0.5, 2, 2),
+               (0.75, 1.75, 2),
+               (1, 0.5, 2),
+               (-1, 0, 2))
 
 scene.add_surface(image,
                   (-1, 0.0, 2),
