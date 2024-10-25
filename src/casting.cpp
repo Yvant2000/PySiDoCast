@@ -666,7 +666,7 @@ static PyObject *method_clear_lights(RayCasterObject *self)
 /// \param v baricentric coordinate
 /// \return true if the ray intersects the triangle, false otherwise
 static inline bool
-segment_triangle_intersect(const pos2 segment, const pos3 triangle, float closest, float *dist, float *u, float *v)
+segment_triangle_intersect(const pos2 &segment, const pos3 triangle, float closest, float *dist, float *u, float *v)
 {
     vec3 E1 = vec3_sub(triangle.B, triangle.A);
     vec3 E2 = vec3_sub(triangle.C, triangle.A);
@@ -760,7 +760,7 @@ static inline bool alpha_dither(float alpha, Py_ssize_t x, Py_ssize_t y)
 /// \param view_distance render distance
 /// \return pixel color
 static inline long
-get_pixel_at(const RayCasterObject *raycaster, const struct pos2 ray, Py_ssize_t pixel_index_x,
+get_pixel_at(const RayCasterObject *raycaster, const struct pos2 &ray, Py_ssize_t pixel_index_x,
              Py_ssize_t pixel_index_y, float view_distance)
 {
     float closest = view_distance;
@@ -1084,7 +1084,7 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
 /// \param max_distance     maximum distance to search for
 /// \param surfaces         list of surfaces to search in
 /// \return           distance to the nearest surface
-float get_closest_intersection(const pos2 ray, float max_distance, const struct Surface *surfaces)
+float get_closest_intersection(const pos2 &ray, float max_distance, const struct Surface *surfaces)
 {
     float closest = max_distance;
 
