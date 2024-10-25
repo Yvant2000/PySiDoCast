@@ -243,39 +243,39 @@ static inline bool _get_3DBuffer_from_Surface(PyObject * img, Py_buffer * buffer
     return false;
 }
 
-static inline int _get_float_from_tuple(PyObject *tuple, int index, float *result)
+static inline int _get_float_from_tuple(int index, PyObject *tuple, float &result)
 {
-PyObject *arg = PyLong_FromLong(index);
-PyObject *item;
-if (!(item = PyObject_GetItem(tuple, arg)))
-{
-printf("Can't access index %d\n", index);
-Py_DECREF(arg);
-return -1;
-}
+    PyObject * arg = PyLong_FromLong(index);
+    PyObject * item;
+    if ((item = PyObject_GetItem(tuple, arg)) == nullptr)
+    {
+        printf("Can't access index %d\n", index);
+        Py_DECREF(arg);
+        return -1;
+    }
 
-*result = (float) PyFloat_AsDouble(item);
+    result = static_cast<float>(PyFloat_AsDouble(item));
 
-Py_DECREF(arg);
-Py_DECREF(item);
-if (PyErr_Occurred())
-{
-printf("Error: Could not convert item %d to float", index);
-return -1;
-}
+    Py_DECREF(arg);
+    Py_DECREF(item);
+    if (PyErr_Occurred())
+    {
+        printf("Error: Could not convert item %d to float", index);
+        return -1;
+    }
 
-return 0;
+    return 0;
 }
 
 /// Gets a vec3 from a tuple
 /// \param tuple    the tuple
 /// \param v        pointer where the result will be stored
 /// \return         0 on success, -1 on error
-inline int _get_vec3_from_tuple(PyObject * tuple, vec3 * v)
+inline int _get_vec3_from_tuple(PyObject * tuple, vec3 &v)
 {
-    if (_get_float_from_tuple(tuple, 0, &(v->x))
-        || _get_float_from_tuple(tuple, 1, &(v->y))
-        || _get_float_from_tuple(tuple, 2, &(v->z)))
+    if (_get_float_from_tuple(0, tuple, v.x)
+        || _get_float_from_tuple(1, tuple, v.y)
+        || _get_float_from_tuple(2, tuple, v.z))
         return -1;
     return 0;
 }
@@ -307,9 +307,9 @@ static PyObject *method_add_triangle(RayCasterObject *self, PyObject *args, PyOb
     vec3 B;
     vec3 C;
 
-    if (_get_vec3_from_tuple(py_A, &A)
-        || _get_vec3_from_tuple(py_B, &B)
-        || _get_vec3_from_tuple(py_C, &C))
+    if (_get_vec3_from_tuple(py_A, A)
+        || _get_vec3_from_tuple(py_B, B)
+        || _get_vec3_from_tuple(py_C, C))
     {
         return nullptr;
     }
@@ -363,9 +363,9 @@ static PyObject *method_add_surface(RayCasterObject *self, PyObject *args, PyObj
     vec3 B;
     vec3 C;
 
-    if (_get_vec3_from_tuple(py_A, &A)
-        || _get_vec3_from_tuple(py_B, &B)
-        || _get_vec3_from_tuple(py_C, &C))
+    if (_get_vec3_from_tuple(py_A, A)
+        || _get_vec3_from_tuple(py_B, B)
+        || _get_vec3_from_tuple(py_C, C))
     {
         return nullptr;
     }
@@ -436,10 +436,10 @@ static PyObject *method_add_quad(RayCasterObject *self, PyObject *args, PyObject
     vec3 C;
     vec3 D;
 
-    if (_get_vec3_from_tuple(py_A, &A)
-        || _get_vec3_from_tuple(py_B, &B)
-        || _get_vec3_from_tuple(py_C, &C)
-        || _get_vec3_from_tuple(py_D, &D))
+    if (_get_vec3_from_tuple(py_A, A)
+        || _get_vec3_from_tuple(py_B, B)
+        || _get_vec3_from_tuple(py_C, C)
+        || _get_vec3_from_tuple(py_D, D))
     {
         return nullptr;
     }
@@ -506,25 +506,14 @@ static PyObject *method_add_wall(RayCasterObject *self, PyObject *args, PyObject
     vec3 A;
     vec3 B;
 
-    if (_get_vec3_from_tuple(py_A, &A)
-        || _get_vec3_from_tuple(py_B, &B))
+    if (_get_vec3_from_tuple(py_A, A)
+        || _get_vec3_from_tuple(py_B, B))
     {
-        return nullptr;
-    }
-
-    Py_buffer buffer1;
-    Py_buffer buffer2;
-
-    if (_get_3DBuffer_from_Surface(surface_image, &buffer1)
-        || _get_3DBuffer_from_Surface(surface_image, &buffer2))
-    {
-        PyErr_SetString(PyExc_ValueError, "Not a valid surface");
         return nullptr;
     }
 
     struct Surface &surface = self->surfaces.emplace_back();
 
-    surface.buffer = buffer1;
     surface.pos = {A, {B.x, A.y, B.z}, {A.x, B.y, A.z}};
     surface.parent = surface_image;
     surface.del = del;
@@ -533,12 +522,20 @@ static PyObject *method_add_wall(RayCasterObject *self, PyObject *args, PyObject
 
     struct Surface &surface2 = self->surfaces.emplace_back();
 
-    surface2.buffer = buffer2;
     surface2.pos = {B, {A.x, B.y, A.z}, {B.x, A.y, B.z}};
     surface2.parent = surface_image;
     surface2.del = del;
     surface2.reverse = true;
     surface2.alpha = alpha;
+
+    if (_get_3DBuffer_from_Surface(surface_image, &surface.buffer) ||
+        _get_3DBuffer_from_Surface(surface_image, &surface2.buffer))
+    {
+        PyErr_SetString(PyExc_ValueError, "Not a valid surface");
+        self->surfaces.pop_back();
+        self->surfaces.pop_back();
+        return nullptr;
+    }
 
     Py_INCREF(surface_image); // We need to keep the surface alive to make sure the buffer is valid.
     Py_INCREF(surface_image); // Two surfaces means we need to incref twice
@@ -565,14 +562,14 @@ static PyObject *method_add_light(RayCasterObject *self, PyObject *args, PyObjec
         return nullptr;
 
     vec3 light_pos;
-    if (_get_vec3_from_tuple(py_light, &light_pos))
+    if (_get_vec3_from_tuple(py_light, light_pos))
     {
         return nullptr;
     }
 
     vec3 light_dir = {FP_NAN, FP_NAN, FP_NAN};
     if (py_direction)
-        if (_get_vec3_from_tuple(py_direction, &light_dir))
+        if (_get_vec3_from_tuple(py_direction, light_dir))
             return nullptr;
 
 
@@ -911,7 +908,7 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
         return nullptr;
 
     vec3 pos;
-    if (_get_vec3_from_tuple(py_pos, &pos))
+    if (_get_vec3_from_tuple(py_pos, pos))
         return nullptr;
 
 
@@ -1098,7 +1095,7 @@ static PyObject *method_single_cast(RayCasterObject *self, PyObject *args, PyObj
         return nullptr;
 
     vec3 origin;
-    if (_get_vec3_from_tuple(py_origin, &origin))
+    if (_get_vec3_from_tuple(py_origin, origin))
         return nullptr;
 
     if (max_distance <= 0.f)
