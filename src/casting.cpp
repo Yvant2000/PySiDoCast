@@ -20,7 +20,7 @@ typedef struct t_RayCasterObject
 {
     PyObject_HEAD           // required python object header
     struct Surface *surfaces;     // List of surfaces
-    struct Light *lights;         // List of lights
+    std::vector<struct Light> lights;
     bool use_lighting;              // Use lighting or not
 } RayCasterObject;
 
@@ -74,14 +74,13 @@ struct pos3
 /// \brief A light source in the scene.
 struct Light
 {
-    struct Light *next;  // Next light in the list
-    vec3 pos;  // Position of the light in the scene
-    vec3 direction;  // Direction of the light in the scene
-    float pos_direction_distance;  // Distance between the light and the direction
-    float intensity; // Intensity of the light (= the distance of lightning)
-    float r; // Red component of the light
-    float g; // Green component of the light
-    float b; // Blue component of the light
+    const vec3 pos;  // Position of the light in the scene
+    const vec3 direction;  // Direction of the light in the scene
+    const float pos_direction_distance;  // Distance between the light and the direction
+    const float intensity; // Intensity of the light (= the distance of lightning)
+    const float r; // Red component of the light
+    const float g; // Green component of the light
+    const float b; // Blue component of the light
     // TODO: Might add an intensity offset (useful for cel shading)
 };
 
@@ -614,21 +613,17 @@ static PyObject *method_add_light(RayCasterObject *self, PyObject *args, PyObjec
 //        return nullptr;
 //    }
 
-    auto *light = (struct Light *) malloc(sizeof(struct Light));
-    light->pos = light_pos;
-    light->intensity = light_intensity;
-    light->r = red;
-    light->g = green;
-    light->b = blue;
-    light->direction = light_dir;
-    light->next = self->lights;
+    struct Light light = {
+            light_pos,
+            light_dir,
+            py_direction ? vec3_dist(light_pos, light_dir) : FP_NAN,
+            light_intensity,
+            red,
+            green,
+            blue};
 
+    self->lights.emplace_back(light);
     self->use_lighting = true;
-    self->lights = light;
-
-    self->lights->pos_direction_distance = FP_NAN;
-    if (py_direction)
-        self->lights->pos_direction_distance = vec3_dist(light_pos, light_dir);
 
     Py_RETURN_NONE;
 }
@@ -655,13 +650,7 @@ static PyObject *method_clear_surfaces(RayCasterObject *self)
 /// \return (Python) None
 static PyObject *method_clear_lights(RayCasterObject *self)
 {
-    struct Light *next;
-    for (struct Light *light = self->lights; light != nullptr; light = next)
-    {
-        next = light->next;
-        free(light);
-    }
-    self->lights = nullptr;
+    self->lights.clear();
     self->use_lighting = false;
     Py_RETURN_NONE;
 }
@@ -825,23 +814,22 @@ get_pixel_at(const RayCasterObject *raycaster, const struct pos2 ray, Py_ssize_t
     // position in space of the pixel
     const vec3 inter = vec3_add(ray.A, vec3_dot_float(ray.B, closest)); // inter = A + t * B
 
-    for (struct Light *temp_light = raycaster->lights; temp_light != nullptr; temp_light = temp_light->next)
+    for (const struct Light &temp_light: raycaster->lights)
     {  // iterate over lights
-        const float dist1 = vec3_dist(temp_light->pos, inter);  // distance between the light and the intersection
-        const float ratio = temp_light->pos_direction_distance == FP_NAN ?
+        const float dist1 = vec3_dist(temp_light.pos, inter);  // distance between the light and the intersection
+        const float ratio = temp_light.pos_direction_distance == FP_NAN
                             // if the light is a radial light, calculate the ratio
-                            dist1 / temp_light->intensity :
+                            ? dist1 / temp_light.intensity
                             // if the light is a directional light, calculate the ratio
-                            (line_point_distance(inter, temp_light->pos,
-                                                 temp_light->direction)  // distance between the direction and the intersection
-                             * temp_light->pos_direction_distance) / (dist1 * temp_light->intensity);
+                            : line_point_distance(inter, temp_light.pos, temp_light.direction) *
+                              temp_light.pos_direction_distance / (dist1 * temp_light.intensity);
 
         if (ratio < 1.0f)
         {  // ratio > 1 means the light is too far away, we don't see anything
             const float temp = 1.0f - ratio;
-            red += temp * temp_light->r;
-            green += temp * temp_light->g;
-            blue += temp * temp_light->b;
+            red += temp * temp_light.r;
+            green += temp * temp_light.g;
+            blue += temp * temp_light.b;
         }
     }
     // Prevent the pixel from being too bright
@@ -1191,13 +1179,6 @@ void RayCaster_dealloc(RayCasterObject *self)
     {
         next = surface->next;
         free_surface(surface);
-    }
-
-    struct Light *next_light;
-    for (struct Light *light = self->lights; light != nullptr; light = next_light)
-    {
-        next_light = light->next;
-        free(light);
     }
 
     Py_TYPE(self)->tp_free((PyObject *) self);
