@@ -8,6 +8,7 @@
 #include <queue>
 
 #include "dithering.h"
+#include "vector3.h"
 
 static constinit const int ALPHA = 3;
 static constinit const int RED = 2;
@@ -22,20 +23,6 @@ typedef struct t_RayCasterObject
     std::vector<struct Surface> surfaces;     // List of surfaces
     std::vector<struct Light> lights;
 } RayCasterObject;
-
-
-typedef struct vec3
-{
-    /*
-        y
-        |  z
-        | /
-        O --- x
-    */
-    float x;
-    float y;
-    float z;
-} vec3;
 
 struct pos2
 {
@@ -145,71 +132,6 @@ static inline void free_temp_surfaces(std::vector<struct Surface> &surfaces)
 
     surfaces.resize(back + 1);
 }
-
-/// Sum two vectors
-/// \param a
-/// \param b
-/// \return a + b
-static inline vec3 vec3_add(const vec3 &a, const vec3 &b)
-{
-    return {a.x + b.x, a.y + b.y, a.z + b.z};
-}
-
-/// Subtract two vectors
-/// \param a
-/// \param b
-/// \return a - b
-static inline vec3 vec3_sub(const vec3 &a, const vec3 &b)
-{
-    return {a.x - b.x, a.y - b.y, a.z - b.z};
-}
-
-/// Dot product of two vectors
-/// \param a : vector(3)
-/// \param b : vector(3)
-/// \return a . b : scalar
-static inline float vec3_dot(const vec3 &a, const vec3 &b)
-{
-    return a.x * b.x + a.y * b.y + a.z * b.z;
-}
-
-/// Multiply a vector by a scalar
-/// \param a : vector(3)
-/// \param b : scalar(1)
-/// \return a * b : vector(3)
-static inline vec3 vec3_dot_float(const vec3 &a, float b)
-{
-    return {a.x * b, a.y * b, a.z * b};
-}
-
-/// Cross product of two vectors
-/// \param a
-/// \param b
-/// \return a x b
-static inline vec3 vec3_cross(const vec3 &a, const vec3 &b)
-{
-    return {a.y * b.z - a.z * b.y,
-            a.z * b.x - a.x * b.z,
-            a.x * b.y - a.y * b.x};
-}
-
-/// Normalize a vector
-/// \param a : vector(3)
-/// \return |a| : scalar
-static inline float vec3_length(const vec3 &a)
-{
-    return sqrtf(a.x * a.x + a.y * a.y + a.z * a.z);
-}
-
-/// Compute distance between two points
-/// \param a : vector(3)
-/// \param b : vector(3)
-/// \return |a - b| : scalar
-static inline float vec3_dist(const vec3 &dot1, const vec3 &dot2)
-{
-    return sqrtf(powf(dot1.x - dot2.x, 2) + powf(dot1.y - dot2.y, 2) + powf(dot1.z - dot2.z, 2));
-}
-
 
 /// gets the py_buffer from a pygame surface
 /// \attention For this to work, you must use `.convert_alpha()` on the surface before passing it to this function
@@ -637,7 +559,7 @@ static PyObject *method_clear_lights(RayCasterObject *self)
 /// \param v baricentric coordinate
 /// \return true if the ray intersects the triangle, false otherwise
 static inline bool
-segment_triangle_intersect(const pos2 &segment, const pos3 triangle, float closest, float *dist, float *u, float *v)
+segment_triangle_intersect(const pos2 &segment, const pos3 &triangle, float closest, float *dist, float *u, float *v)
 {
     vec3 E1 = vec3_sub(triangle.B, triangle.A);
     vec3 E2 = vec3_sub(triangle.C, triangle.A);
