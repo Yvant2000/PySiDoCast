@@ -321,8 +321,19 @@ static PyObject *method_add_wall(RayCasterObject *self, PyObject *args, PyObject
         return nullptr;
     }
 
+    Py_buffer buffer1;
+    Py_buffer buffer2;
+
+    if (get_3DBuffer_from_Surface(surface_image, &buffer1) ||
+        get_3DBuffer_from_Surface(surface_image, &buffer2))
+    {
+        PyErr_SetString(PyExc_ValueError, "Not a valid surface");
+        return nullptr;
+    }
+
     struct Surface &surface = self->surfaces.emplace_back();
 
+    surface.buffer = buffer1;
     surface.pos = {A, {B.x, A.y, B.z}, {A.x, B.y, A.z}};
     surface.parent = surface_image;
     surface.del = del;
@@ -331,20 +342,12 @@ static PyObject *method_add_wall(RayCasterObject *self, PyObject *args, PyObject
 
     struct Surface &surface2 = self->surfaces.emplace_back();
 
+    surface2.buffer = buffer2;
     surface2.pos = {B, {A.x, B.y, A.z}, {B.x, A.y, B.z}};
     surface2.parent = surface_image;
     surface2.del = del;
     surface2.reverse = true;
     surface2.alpha = alpha;
-
-    if (get_3DBuffer_from_Surface(surface_image, &surface.buffer) ||
-        get_3DBuffer_from_Surface(surface_image, &surface2.buffer))
-    {
-        PyErr_SetString(PyExc_ValueError, "Not a valid surface");
-        self->surfaces.pop_back();
-        self->surfaces.pop_back();
-        return nullptr;
-    }
 
     Py_INCREF(surface_image); // We need to keep the surface alive to make sure the buffer is valid.
     Py_INCREF(surface_image); // Two surfaces means we need to incref twice
