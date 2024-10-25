@@ -38,8 +38,6 @@ typedef struct vec3
     float z;
 } vec3;
 
-
-// TODO: measure is pass by ref is faster
 struct pos2
 {
     /* For a segment, the start point and end point.
@@ -1040,13 +1038,12 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
     t_A = pos;
 
     thread_quit = false;
-    auto **threads = (std::thread **) malloc(sizeof(std::thread *) * thread_count);
+    auto *threads = new std::thread[thread_count];
     for (int i = thread_count - 1; i >= 0; --i)
-        threads[i] = new std::thread(thread_worker);  // C++ threads 💀 (pthreads ? never heard of them.)
+        threads[i] = std::thread(thread_worker);
 
     for (Py_ssize_t dst_y = height; dst_y; --dst_y)
     {
-
         projection = vec3_add(projection, height_vector);
 
         const struct thread_args t_args{
@@ -1066,10 +1063,10 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
 
     for (int i = thread_count - 1; i >= 0; --i)
     {
-        threads[i]->join();
-        delete threads[i];
+        threads[i].join();
     }
-    free(threads);
+
+    delete[] threads;
 
     PyBuffer_Release(&dst_buffer);
 

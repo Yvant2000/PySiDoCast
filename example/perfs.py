@@ -44,7 +44,7 @@ end = timer()
 print(f"render {WALLS} walls and {LIGHTS} lights: {end - start}")
 
 """
-add_wall: 0.15190609999990556
-add_light: 0.1368188000014925
-render 100 walls and 100 lights: 9.697650599999179
+add_wall: 0.15137789999971574
+add_light: 0.1398298000003706
+render 100 walls and 100 lights: 9.481029799999305
 """
