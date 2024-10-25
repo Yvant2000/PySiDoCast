@@ -10,12 +10,8 @@
 #include "dithering.h"
 #include "vector3.h"
 #include "geometry.h"
-
-static constinit const int ALPHA = 3;
-static constinit const int RED = 2;
-static constinit const int GREEN = 1;
-static constinit const int BLUE = 0;
-
+#include "light.h"
+#include "surface.h"
 
 /// PyObject containing the RayCaster
 typedef struct t_RayCasterObject
@@ -24,86 +20,6 @@ typedef struct t_RayCasterObject
     std::vector<struct Surface> surfaces;     // List of surfaces
     std::vector<struct Light> lights;
 } RayCasterObject;
-
-
-///
-/// \brief A light source in the scene.
-struct Light
-{
-    const vec3 pos;  // Position of the light in the scene
-    const vec3 direction;  // Direction of the light in the scene
-    const float pos_direction_distance;  // Distance between the light and the direction
-    const float intensity; // Intensity of the light (= the distance of lightning)
-    const float r; // Red component of the light
-    const float g; // Green component of the light
-    const float b; // Blue component of the light
-    // TODO: Might add an intensity offset (useful for cel shading)
-};
-
-
-///
-/// \brief A surface in the scene
-struct Surface
-{
-    Py_buffer buffer; // The buffer of the surface
-    struct pos3 pos;  // The position of the 3 points of the triangle
-    PyObject *parent;  // The python object that owns this surface
-    // We need to keep a reference to the parent object to prevent the buffer from being destroyed by the garbage collector
-    bool del;  // If the Surface is temporary and needs to be deleted
-    bool reverse;  // If the surface texture is reversed (useful for rectangles)
-    float alpha;  // The alpha value of the surface
-};
-
-
-/// Free a surface object
-/// \param surface The surface to free
-static inline void free_surface(struct Surface &surface)
-{
-    PyBuffer_Release(&surface.buffer);
-    Py_DECREF(surface.parent);
-//    free(surface);
-}
-
-
-/// Free temporary surfaces in the list
-/// \param surfaces The list of surfaces
-static inline void free_temp_surfaces(std::vector<struct Surface> &surfaces)
-{
-    // The temporary surfaces are shuffled into the list
-
-    size_t back = surfaces.size();
-
-    // delete the temporary surfaces at the end of the list
-    while (back > 0 and surfaces[back - 1].del)
-    {
-        free_surface(surfaces[back - 1]);
-        back -= 1;
-    }
-
-    back -= 1;
-
-    for (size_t front = 0; front < back; front += 1)
-    {
-        if (not surfaces[front].del)
-        {
-            continue;
-        }
-
-        free_surface(surfaces[front]);
-        surfaces[front] = surfaces[back];
-
-        back -= 1;
-
-        // find the next non-temporary surface
-        while (back > front and surfaces[back].del)
-        {
-            free_surface(surfaces[back]);
-            back -= 1;
-        }
-    }
-
-    surfaces.resize(back + 1);
-}
 
 /// gets the py_buffer from a pygame surface
 /// \attention For this to work, you must use `.convert_alpha()` on the surface before passing it to this function
@@ -520,42 +436,6 @@ static PyObject *method_clear_lights(RayCasterObject *self)
     Py_RETURN_NONE;
 }
 
-
-/// Gets the color of a pixel on a surface at the given coordinates
-/// \param buffer py_buffer object containing the surface datar
-/// \param u baricentric coordinate of the pixel on the surface
-/// \param v baricentric coordinate of the pixel on the surface
-/// \return pointer to the pixel color
-static inline unsigned char *get_pixel_from_buffer(const Py_buffer &buffer, float u, float v)
-{
-    const Py_ssize_t width = buffer.shape[0];
-    const Py_ssize_t height = buffer.shape[1];
-
-    const auto x = (Py_ssize_t) (u * (float) width);
-    const auto y = (Py_ssize_t) (v * (float) height);
-
-    long *buf = (long *) buffer.buf;
-    long *pixel = buf + (y * width + x);
-    return (reinterpret_cast<unsigned char *> (pixel)) - 2;
-}
-
-/// Compute weather or not a pixel should be drawn depending of the alpha value
-/// \param alpha            alpha value of the pixel
-/// \param x                x coordinate of the pixel on the screen
-/// \param y                y coordinate of the pixel on the screen
-/// \return         true if the pixel should be skipped, false otherwise
-static inline bool alpha_dither(float alpha, Py_ssize_t x, Py_ssize_t y)
-{
-    if (alpha == 0.0f)  // pixel isn't seen at all
-        return true;
-
-    if (alpha == 1.0f)  // pixel isn't transparent
-        return false;
-
-    return alpha < DITHER_MATRIX[(y % DITHERING_SIZE) * DITHERING_SIZE + (x % DITHERING_SIZE)];
-}
-
-
 /// Compute the intersection between a ray and the surfaces in the raycaster and return the color of the pixel
 /// \param surfaces surfaces in the scene
 /// \param ray ray to cast
@@ -616,22 +496,22 @@ get_pixel_at(const RayCasterObject *raycaster, const struct pos2 &ray, Py_ssize_
     // position in space of the pixel
     const vec3 inter = vec3_add(ray.A, vec3_dot_float(ray.B, closest)); // inter = A + t * B
 
-    for (const struct Light &temp_light: raycaster->lights)
+    for (const struct Light &light: raycaster->lights)
     {  // iterate over lights
-        const float dist1 = vec3_dist(temp_light.pos, inter);  // distance between the light and the intersection
-        const float ratio = temp_light.pos_direction_distance == FP_NAN
+        const float dist1 = vec3_dist(light.pos, inter);  // distance between the light and the intersection
+        const float ratio = light.pos_direction_distance == FP_NAN
                             // if the light is a radial light, calculate the ratio
-                            ? dist1 / temp_light.intensity
+                            ? dist1 / light.intensity
                             // if the light is a directional light, calculate the ratio
-                            : line_point_distance(inter, temp_light.pos, temp_light.direction) *
-                              temp_light.pos_direction_distance / (dist1 * temp_light.intensity);
+                            : line_point_distance(inter, light.pos, light.direction) *
+                              light.pos_direction_distance / (dist1 * light.intensity);
 
         if (ratio < 1.0f)
         {  // ratio > 1 means the light is too far away, we don't see anything
             const float temp = 1.0f - ratio;
-            red += temp * temp_light.r;
-            green += temp * temp_light.g;
-            blue += temp * temp_light.b;
+            red += temp * light.r;
+            green += temp * light.g;
+            blue += temp * light.b;
         }
     }
     // Prevent the pixel from being too bright
@@ -656,7 +536,6 @@ struct thread_args
     Py_ssize_t pixel_index;  // index of the pixel
     vec3 proj;               // projection of the pixel
 };
-
 
 static std::mutex queue_mutex;  // Allows only one thread to access the queue at a time
 static std::queue<struct thread_args> args_queue;  // Queue of data that is NOT shared between threads
@@ -876,30 +755,6 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
     free_temp_surfaces(self->surfaces);
 
     Py_RETURN_NONE;
-}
-
-/// Compute the distance to the nearest surface in the given direction
-/// If no intersection is found, return the maximum distance.
-/// \param ray              starting point and direction
-/// \param max_distance     maximum distance to search for
-/// \param surfaces         list of surfaces to search in
-/// \return           distance to the nearest surface
-float get_closest_intersection(const pos2 &ray, float max_distance, const std::vector<struct Surface> &surfaces)
-{
-    float closest = max_distance;
-
-    for (const struct Surface surface: surfaces)
-    {
-        float dist, u, v;
-        if (not segment_triangle_intersect(ray, surface.pos, closest, &dist, &u, &v))
-            continue;
-
-        const unsigned char *const new_pixel_ptr = get_pixel_from_buffer(surface.buffer, u, v);
-        if (new_pixel_ptr[ALPHA])
-            closest = dist;
-    }
-
-    return closest;
 }
 
 /// Compute a single raycast and return the distance from the ray origin to the closest intersection.
