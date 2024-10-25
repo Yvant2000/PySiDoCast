@@ -847,9 +847,17 @@ get_pixel_at(const RayCasterObject *raycaster, const struct pos2 ray, Py_ssize_t
     return pixel;
 }
 
+/// data for each individual thread
+struct thread_args
+{          // a few args the thread needs to compute the pixel
+    unsigned long *buf;      // where to write the pixel
+    Py_ssize_t pixel_index;  // index of the pixel
+    vec3 proj;               // projection of the pixel
+};
+
 
 static std::mutex queue_mutex;  // Allows only one thread to access the queue at a time
-static std::queue<struct thread_args *> args_queue;  // Queue of data that is NOT shared between threads
+static std::queue<struct thread_args> args_queue;  // Queue of data that is NOT shared between threads
 static bool thread_quit;   // Tells the threads to quit once they are done with their current task
 
 // SHARED DATA
@@ -862,16 +870,6 @@ static Py_ssize_t t_width;  // width of the current screen (for some reason we d
 
 static vec3 t_width_vector;  // vector from the top right corner of the screen to the top left corner divided by the width of the screen
 static struct vec3 t_A;    // This is the position of the camera
-
-
-/// data for each individual thread
-struct thread_args
-{          // a few args the thread needs to compute the pixel
-    unsigned long *buf;      // where to write the pixel
-    Py_ssize_t pixel_index;  // index of the pixel
-    vec3 proj;               // projection of the pixel
-};
-
 
 void thread_worker()
 {
@@ -889,15 +887,13 @@ void thread_worker()
             continue;
         }
 
-        struct thread_args *args = args_queue.front();  // get my args from the queue
+        const struct thread_args args = args_queue.front();  // get my args from the queue
         args_queue.pop();
         queue_mutex.unlock();  // release the lock so other threads can get their args
 
-        unsigned long *buf = args->buf;
-        const Py_ssize_t pixel_index_y = args->pixel_index;
-        vec3 ray_b = args->proj;
-        free(args);
-
+        unsigned long *buf = args.buf;
+        const Py_ssize_t pixel_index_y = args.pixel_index;
+        vec3 ray_b = args.proj;
 
         for (Py_ssize_t dst_x = t_width; dst_x; --dst_x)
         {
@@ -1053,11 +1049,11 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
 
         projection = vec3_add(projection, height_vector);
 
-        auto *t_args = (struct thread_args *) malloc(sizeof(struct thread_args));
-
-        t_args->buf = (unsigned long *) ((unsigned char *) (buf) - 2);
-        t_args->pixel_index = dst_y;
-        t_args->proj = projection;
+        const struct thread_args t_args{
+                .buf = reinterpret_cast<unsigned long *>(reinterpret_cast<unsigned char *>(buf) - 2),
+                .pixel_index = dst_y,
+                .proj = projection,
+        };
 
         queue_mutex.lock(); // mandatory lock
         args_queue.push(t_args);
