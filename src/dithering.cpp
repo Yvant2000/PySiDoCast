@@ -35,4 +35,3 @@ static consteval std::array<float, DITHERING_SIZE * DITHERING_SIZE> generate_dit
 }
 
 static constinit const std::array<float, DITHERING_SIZE * DITHERING_SIZE> DITHER_MATRIX = generate_dither_matrix();
-

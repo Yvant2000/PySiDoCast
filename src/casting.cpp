@@ -19,9 +19,8 @@ static constinit const int BLUE = 0;
 typedef struct t_RayCasterObject
 {
     PyObject_HEAD           // required python object header
-    struct Surface *surfaces;     // List of surfaces
+    std::vector<struct Surface> surfaces;     // List of surfaces
     std::vector<struct Light> lights;
-    bool use_lighting;              // Use lighting or not
 } RayCasterObject;
 
 
@@ -89,7 +88,6 @@ struct Surface
 {
     Py_buffer buffer; // The buffer of the surface
     struct pos3 pos;  // The position of the 3 points of the triangle
-    struct Surface *next; // linked list
     PyObject *parent;  // The python object that owns this surface
     // We need to keep a reference to the parent object to prevent the buffer from being destroyed by the garbage collector
     bool del;  // If the Surface is temporary and needs to be deleted
@@ -100,45 +98,52 @@ struct Surface
 
 /// Free a surface object
 /// \param surface The surface to free
-static inline void free_surface(struct Surface *surface)
+static inline void free_surface(struct Surface &surface)
 {
-    PyBuffer_Release(&surface->buffer);
-    Py_DECREF(surface->parent);
-    free(surface);
+    PyBuffer_Release(&surface.buffer);
+    Py_DECREF(surface.parent);
+//    free(surface);
 }
 
 
 /// Free temporary surfaces in the list
 /// \param surfaces The list of surfaces
-static inline void free_temp_surfaces(struct Surface **surfaces)
+static inline void free_temp_surfaces(std::vector<struct Surface> &surfaces)
 {
-    if (*surfaces == nullptr)
-        return;
+    // The temporary surfaces are shuffled into the list
 
-    // The temporary surfaces and the other surfaces are shuffled in the list
+    size_t back = surfaces.size();
 
-    // ensure that the first surface is not temporary
-    while ((*surfaces)->del)
+    // delete the temporary surfaces at the end of the list
+    while (back > 0 and surfaces[back - 1].del)
     {
-        struct Surface *next = (*surfaces)->next;
-        free_surface(*surfaces);
-        if (!(*surfaces = next)) // if all surfaces were temporary, return
-            return;
+        free_surface(surfaces[back - 1]);
+        back -= 1;
     }
 
-    // free the rest of the surfaces
-    struct Surface *prev = *surfaces;
-    struct Surface *next;
-    for (struct Surface *current = prev->next; current != nullptr; current = next)
+    back -= 1;
+
+    for (size_t front = 0; front < back; front += 1)
     {
-        next = current->next;
-        if (current->del)
+        if (not surfaces[front].del)
         {
-            free_surface(current);
-            prev->next = next;
-        } else
-            prev = current;
+            continue;
+        }
+
+        free_surface(surfaces[front]);
+        surfaces[front] = surfaces[back];
+
+        back -= 1;
+
+        // find the next non-temporary surface
+        while (back > front and surfaces[back].del)
+        {
+            free_surface(surfaces[back]);
+            back -= 1;
+        }
     }
+
+    surfaces.resize(back + 1);
 }
 
 /// Sum two vectors
@@ -205,6 +210,7 @@ static inline float vec3_dist(const vec3 dot1, const vec3 dot2)
     return sqrtf(powf(dot1.x - dot2.x, 2) + powf(dot1.y - dot2.y, 2) + powf(dot1.z - dot2.z, 2));
 }
 
+
 /// gets the py_buffer from a pygame surface
 /// \attention For this to work, you must use `.convert_alpha()` on the surface before passing it to this function
 /// \param img          pygame surface
@@ -237,42 +243,27 @@ static inline bool _get_3DBuffer_from_Surface(PyObject * img, Py_buffer * buffer
     return false;
 }
 
-
-/// Gets a float from a tuple
-/// \param tuple    the tuple
-/// \param index    the index of the item
-/// \param result   pointer where the result will be stored
-/// \return         0 on success, -1 on error
-inline int _get_float_from_tuple(PyObject * tuple, int
-index,
-float *result
-)
+static inline int _get_float_from_tuple(PyObject *tuple, int index, float *result)
 {
 PyObject *arg = PyLong_FromLong(index);
 PyObject *item;
-if (!(
-item = PyObject_GetItem(tuple, arg)
-))
+if (!(item = PyObject_GetItem(tuple, arg)))
 {
 printf("Can't access index %d\n", index);
 Py_DECREF(arg);
 return -1;
 }
 
-*
-result = (float) PyFloat_AsDouble(item);
+*result = (float) PyFloat_AsDouble(item);
+
 Py_DECREF(arg);
 Py_DECREF(item);
-
-if (
-
-PyErr_Occurred()
-
-)
+if (PyErr_Occurred())
 {
 printf("Error: Could not convert item %d to float", index);
 return -1;
 }
+
 return 0;
 }
 
@@ -323,27 +314,25 @@ static PyObject *method_add_triangle(RayCasterObject *self, PyObject *args, PyOb
         return nullptr;
     }
 
-    auto *surface = (struct Surface *) malloc(sizeof(struct Surface));
-    surface->pos.A = A;
-    surface->pos.B = B;
-    surface->pos.C = C;
-
-    surface->alpha = alpha;
-
-    surface->parent = surface_image;
-    surface->del = del;
-    surface->reverse = reverse;
-
-    if (_get_3DBuffer_from_Surface(surface_image, &surface->buffer))
+    Py_buffer buffer;
+    if (_get_3DBuffer_from_Surface(surface_image, &buffer))
     {
         PyErr_SetString(PyExc_ValueError, "Not a valid surface");
-        free(surface);
         return nullptr;
     }
-    Py_INCREF(surface_image); // We need to keep the surface alive to make sure the buffer is valid.
 
-    surface->next = self->surfaces; // Push the surface on top of the stack.
-    self->surfaces = surface;
+    struct Surface surface{
+            .buffer = buffer,
+            .pos = {A, B, C,},
+            .parent = surface_image,
+            .del = del,
+            .reverse = reverse,
+            .alpha = alpha,
+    };
+
+    self->surfaces.emplace_back(surface);
+
+    Py_INCREF(surface_image); // We need to keep the surface alive to make sure the buffer is valid.
 
     Py_RETURN_NONE;
 }
@@ -381,39 +370,39 @@ static PyObject *method_add_surface(RayCasterObject *self, PyObject *args, PyObj
         return nullptr;
     }
 
-    auto *surface = (struct Surface *) malloc(sizeof(struct Surface));
-    surface->pos.A = A;
-    surface->pos.B = B;
-    surface->pos.C = C;
-    surface->alpha = alpha;
-    surface->parent = surface_image;
-    surface->del = del;
-    surface->reverse = false;
+    Py_buffer buffer1;
+    Py_buffer buffer2;
 
-    auto *surface2 = (struct Surface *) malloc(sizeof(struct Surface));
-    surface2->pos.A = vec3_sub(vec3_add(C, B), A);
-    surface2->pos.B = C;
-    surface2->pos.C = B;
-    surface2->alpha = alpha;
-    surface2->parent = surface_image;
-    surface2->del = del;
-    surface2->reverse = true;
-
-    if (_get_3DBuffer_from_Surface(surface_image, &surface->buffer)
-        || _get_3DBuffer_from_Surface(surface_image, &surface2->buffer))
+    if (_get_3DBuffer_from_Surface(surface_image, &buffer1)
+        || _get_3DBuffer_from_Surface(surface_image, &buffer2))
     {
         PyErr_SetString(PyExc_ValueError, "Not a valid surface");
-        free(surface);
-        free(surface2);
         return nullptr;
     }
 
+    struct Surface surface{
+            .buffer = buffer1,
+            .pos = {A, B, C},
+            .parent = surface_image,
+            .del = del,
+            .reverse = false,
+            .alpha = alpha,
+    };
+
+    struct Surface surface2{
+            .buffer = buffer2,
+            .pos = {vec3_sub(vec3_add(C, B), A), C, B},
+            .parent = surface_image,
+            .del = del,
+            .reverse = true,
+            .alpha = alpha,
+    };
+
+    self->surfaces.emplace_back(surface);
+    self->surfaces.emplace_back(surface2);
+
     Py_INCREF(surface_image); // We need to keep the surface alive to make sure the buffer is valid.
     Py_INCREF(surface_image); // Two surfaces means we need to incref twice
-
-    surface->next = surface2;
-    surface2->next = self->surfaces; // Push the surface on top of the stack.
-    self->surfaces = surface;
 
     Py_RETURN_NONE;
 }
@@ -455,39 +444,39 @@ static PyObject *method_add_quad(RayCasterObject *self, PyObject *args, PyObject
         return nullptr;
     }
 
-    auto *surface = (struct Surface *) malloc(sizeof(struct Surface));
-    surface->pos.A = A;
-    surface->pos.B = B;
-    surface->pos.C = D;
-    surface->alpha = alpha;
-    surface->parent = surface_image;
-    surface->del = del;
-    surface->reverse = false;
+    Py_buffer buffer1;
+    Py_buffer buffer2;
 
-    auto *surface2 = (struct Surface *) malloc(sizeof(struct Surface));
-    surface2->pos.A = C;
-    surface2->pos.B = D;
-    surface2->pos.C = B;
-    surface2->alpha = alpha;
-    surface2->parent = surface_image;
-    surface2->del = del;
-    surface2->reverse = true;
-
-    if (_get_3DBuffer_from_Surface(surface_image, &surface->buffer)
-        || _get_3DBuffer_from_Surface(surface_image, &surface2->buffer))
+    if (_get_3DBuffer_from_Surface(surface_image, &buffer1)
+        || _get_3DBuffer_from_Surface(surface_image, &buffer2))
     {
         PyErr_SetString(PyExc_ValueError, "Not a valid surface");
-        free(surface);
-        free(surface2);
         return nullptr;
     }
 
+    struct Surface surface{
+            .buffer = buffer1,
+            .pos = {A, B, D},
+            .parent = surface_image,
+            .del = del,
+            .reverse = false,
+            .alpha = alpha,
+    };
+
+    struct Surface surface2{
+            .buffer = buffer2,
+            .pos = {C, D, B},
+            .parent = surface_image,
+            .del = del,
+            .reverse = true,
+            .alpha = alpha,
+    };
+
+    self->surfaces.emplace_back(surface);
+    self->surfaces.emplace_back(surface2);
+
     Py_INCREF(surface_image); // We need to keep the surface alive to make sure the buffer is valid.
     Py_INCREF(surface_image); // Two surfaces means we need to incref twice
-
-    surface->next = surface2;
-    surface2->next = self->surfaces; // Push the surface on top of the stack.
-    self->surfaces = surface;
 
     Py_RETURN_NONE;
 }
@@ -523,47 +512,36 @@ static PyObject *method_add_wall(RayCasterObject *self, PyObject *args, PyObject
         return nullptr;
     }
 
-    auto *surface = (struct Surface *) malloc(sizeof(struct Surface));
-    surface->pos.A = A;
-    surface->pos.B.x = B.x;
-    surface->pos.B.y = A.y;
-    surface->pos.B.z = B.z;
-    surface->pos.C.x = A.x;
-    surface->pos.C.y = B.y;
-    surface->pos.C.z = A.z;
-    surface->alpha = alpha;
-    surface->parent = surface_image;
-    surface->del = del;
-    surface->reverse = false;
+    Py_buffer buffer1;
+    Py_buffer buffer2;
 
-    auto *surface2 = (struct Surface *) malloc(sizeof(struct Surface));
-    surface2->pos.A = B;
-    surface2->pos.B.x = A.x;
-    surface2->pos.B.y = B.y;
-    surface2->pos.B.z = A.z;
-    surface2->pos.C.x = B.x;
-    surface2->pos.C.y = A.y;
-    surface2->pos.C.z = B.z;
-    surface2->alpha = alpha;
-    surface2->parent = surface_image;
-    surface2->del = del;
-    surface2->reverse = true;
-
-    if (_get_3DBuffer_from_Surface(surface_image, &surface->buffer)
-        || _get_3DBuffer_from_Surface(surface_image, &surface2->buffer))
+    if (_get_3DBuffer_from_Surface(surface_image, &buffer1)
+        || _get_3DBuffer_from_Surface(surface_image, &buffer2))
     {
         PyErr_SetString(PyExc_ValueError, "Not a valid surface");
-        free(surface);
-        free(surface2);
         return nullptr;
     }
 
+    struct Surface &surface = self->surfaces.emplace_back();
+
+    surface.buffer = buffer1;
+    surface.pos = {A, {B.x, A.y, B.z}, {A.x, B.y, A.z}};
+    surface.parent = surface_image;
+    surface.del = del;
+    surface.reverse = false;
+    surface.alpha = alpha;
+
+    struct Surface &surface2 = self->surfaces.emplace_back();
+
+    surface2.buffer = buffer2;
+    surface2.pos = {B, {A.x, B.y, A.z}, {B.x, A.y, B.z}};
+    surface2.parent = surface_image;
+    surface2.del = del;
+    surface2.reverse = true;
+    surface2.alpha = alpha;
+
     Py_INCREF(surface_image); // We need to keep the surface alive to make sure the buffer is valid.
     Py_INCREF(surface_image); // Two surfaces means we need to incref twice
-
-    surface->next = surface2;
-    surface2->next = self->surfaces; // Push the surface on top of the stack.
-    self->surfaces = surface;
 
     Py_RETURN_NONE;
 }
@@ -621,7 +599,6 @@ static PyObject *method_add_light(RayCasterObject *self, PyObject *args, PyObjec
             blue};
 
     self->lights.emplace_back(light);
-    self->use_lighting = true;
 
     Py_RETURN_NONE;
 }
@@ -632,13 +609,13 @@ static PyObject *method_add_light(RayCasterObject *self, PyObject *args, PyObjec
 /// \return (Python) None
 static PyObject *method_clear_surfaces(RayCasterObject *self)
 {
-    struct Surface *next;
-    for (struct Surface *surface = self->surfaces; surface != nullptr; surface = next)
+    for (struct Surface &surface: self->surfaces)
     {
-        next = surface->next;
         free_surface(surface);
     }
-    self->surfaces = nullptr;
+
+    self->surfaces.clear();
+
     Py_RETURN_NONE;
 }
 
@@ -649,7 +626,6 @@ static PyObject *method_clear_surfaces(RayCasterObject *self)
 static PyObject *method_clear_lights(RayCasterObject *self)
 {
     self->lights.clear();
-    self->use_lighting = false;
     Py_RETURN_NONE;
 }
 
@@ -700,15 +676,15 @@ segment_triangle_intersect(const pos2 &segment, const pos3 triangle, float close
 /// \param u baricentric coordinate of the pixel on the surface
 /// \param v baricentric coordinate of the pixel on the surface
 /// \return pointer to the pixel color
-static inline unsigned char *get_pixel_from_buffer(const Py_buffer *buffer, float u, float v)
+static inline unsigned char *get_pixel_from_buffer(const Py_buffer &buffer, float u, float v)
 {
-    const Py_ssize_t width = buffer->shape[0];
-    const Py_ssize_t height = buffer->shape[1];
+    const Py_ssize_t width = buffer.shape[0];
+    const Py_ssize_t height = buffer.shape[1];
 
     const auto x = (Py_ssize_t) (u * (float) width);
     const auto y = (Py_ssize_t) (v * (float) height);
 
-    long *buf = (long *) buffer->buf;
+    long *buf = (long *) buffer.buf;
     long *pixel = buf + (y * width + x);
     return (reinterpret_cast<unsigned char *> (pixel)) - 2;
 }
@@ -764,23 +740,23 @@ get_pixel_at(const RayCasterObject *raycaster, const struct pos2 &ray, Py_ssize_
     float closest = view_distance;
     const unsigned char *closest_pixel_ptr = nullptr;
 
-    for (struct Surface *surfaces = raycaster->surfaces; surfaces != nullptr; surfaces = surfaces->next)
+    for (const struct Surface surface: raycaster->surfaces)
     {
 
-        if (alpha_dither(surfaces->alpha, pixel_index_x, pixel_index_y))
+        if (alpha_dither(surface.alpha, pixel_index_x, pixel_index_y))
             continue;
 
         float dist, u, v;
-        if (!segment_triangle_intersect(ray, surfaces->pos, closest, &dist, &u, &v))
+        if (!segment_triangle_intersect(ray, surface.pos, closest, &dist, &u, &v))
             continue;
 
-        if (surfaces->reverse)
+        if (surface.reverse)
         {  // reverse the texture if needed
             u = 1.0f - u;
             v = 1.0f - v;
         }
 
-        const unsigned char *const new_pixel_ptr = get_pixel_from_buffer(&surfaces->buffer, u, v);
+        const unsigned char *const new_pixel_ptr = get_pixel_from_buffer(surface.buffer, u, v);
         if (alpha_dither((float) new_pixel_ptr[ALPHA] / 255.f, pixel_index_x, pixel_index_y))
             continue;
 
@@ -800,7 +776,7 @@ get_pixel_at(const RayCasterObject *raycaster, const struct pos2 &ray, Py_ssize_
     pixel_ptr[RED] = static_cast<unsigned char>(static_cast<float>(closest_pixel_ptr[RED]) * r);
     // pixel_ptr[ALPHA] = new_pixel_ptr[ALPHA];
 
-    if (!raycaster->use_lighting || !pixel)
+    if (raycaster->lights.empty() || not pixel)
         return pixel;
 
     // apply lights
@@ -1070,7 +1046,7 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
 
     PyBuffer_Release(&dst_buffer);
 
-    free_temp_surfaces(&(self->surfaces));
+    free_temp_surfaces(self->surfaces);
 
     Py_RETURN_NONE;
 }
@@ -1081,18 +1057,17 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
 /// \param max_distance     maximum distance to search for
 /// \param surfaces         list of surfaces to search in
 /// \return           distance to the nearest surface
-float get_closest_intersection(const pos2 &ray, float max_distance, const struct Surface *surfaces)
+float get_closest_intersection(const pos2 &ray, float max_distance, const std::vector<struct Surface> &surfaces)
 {
     float closest = max_distance;
 
-    for (; surfaces != nullptr; surfaces = surfaces->next)
+    for (const struct Surface surface: surfaces)
     {
-
         float dist, u, v;
-        if (!segment_triangle_intersect(ray, surfaces->pos, closest, &dist, &u, &v))
+        if (not segment_triangle_intersect(ray, surface.pos, closest, &dist, &u, &v))
             continue;
 
-        const unsigned char *const new_pixel_ptr = get_pixel_from_buffer(&surfaces->buffer, u, v);
+        const unsigned char *const new_pixel_ptr = get_pixel_from_buffer(surface.buffer, u, v);
         if (new_pixel_ptr[ALPHA])
             closest = dist;
     }
@@ -1153,7 +1128,7 @@ static PyObject *method_single_cast(RayCasterObject *self, PyObject *args, PyObj
 }
 
 /// New method to allocate the Raycaster object
-static RayCasterObject *RayCaster_new(PyTypeObject * type, PyObject * args, PyObject * kwds)
+static RayCasterObject *RayCaster_new(PyTypeObject * type)
 {
     auto *self = (RayCasterObject *) type->tp_alloc(type, 0);
     if (self == nullptr)
@@ -1167,10 +1142,8 @@ static RayCasterObject *RayCaster_new(PyTypeObject * type, PyObject * args, PyOb
 /// \param self    the raycaster object
 void RayCaster_dealloc(RayCasterObject *self)
 {
-    struct Surface *next;
-    for (struct Surface *surface = self->surfaces; surface != nullptr; surface = next)
+    for (struct Surface &surface: self->surfaces)
     {
-        next = surface->next;
         free_surface(surface);
     }
 

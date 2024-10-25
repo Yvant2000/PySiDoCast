@@ -6,7 +6,7 @@ pygame.init()
 
 scene = pysidocast.Scene()  # INIT THE SCENE
 
-PERF = 0.32  # Decrease this value to increase the performance (but decrease the quality)
+PERF = 0.5  # Decrease this value to increase the performance (but decrease the quality)
 dim = (1280 * PERF, 720 * PERF)
 
 view_distance = 7
