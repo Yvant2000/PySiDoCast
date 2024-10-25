@@ -610,7 +610,7 @@ static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObje
     float view_distance = 1000.f;
     bool rad = false;
 
-    int thread_count = 1;
+    int thread_count = -1;
 
     static char *kwlist[] = {"dst_surface", "pos", "angle_x", "angle_y", "fov", "view_distance", "rad", "threads",
                              nullptr};
