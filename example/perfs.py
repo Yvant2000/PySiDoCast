@@ -1,5 +1,3 @@
-import time
-
 import pysidocast
 import pygame
 from timeit import default_timer as timer
@@ -44,7 +42,7 @@ end = timer()
 print(f"render {WALLS} walls and {LIGHTS} lights: {end - start}")
 
 """
-add_wall: 0.21531639999739127
-add_light: 0.13168429999859654
-render 100 walls and 100 lights: 8.964777400000457
+add_wall: 0.21962639999765088
+add_light: 0.13257669999802602
+render 100 walls and 100 lights: 8.939792599998327
 """

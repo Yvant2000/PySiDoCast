@@ -9,6 +9,7 @@
 
 #include "dithering.h"
 #include "vector3.h"
+#include "geometry.h"
 
 static constinit const int ALPHA = 3;
 static constinit const int RED = 2;
@@ -23,35 +24,6 @@ typedef struct t_RayCasterObject
     std::vector<struct Surface> surfaces;     // List of surfaces
     std::vector<struct Light> lights;
 } RayCasterObject;
-
-struct pos2
-{
-    /* For a segment, the start point and end point.
-        A [---------] B
-    */
-    /* For a line, a point and a direction.
-        ------ A ------ (B) ->
-    */
-    const vec3 A;
-    const vec3 B;
-};
-
-// TODO: measure is pass by ref is faster
-struct pos3
-{
-    /*
-        C
-        |\
-        | \
-        |  \
-        |   \
-        |    \
-        A --- B
-     */
-    vec3 A;
-    vec3 B;
-    vec3 C;
-};
 
 
 ///
@@ -193,7 +165,7 @@ static inline int _get_float_from_tuple(int index, PyObject *tuple, float &resul
 /// \param tuple    the tuple
 /// \param v        pointer where the result will be stored
 /// \return         0 on success, -1 on error
-inline int _get_vec3_from_tuple(PyObject * tuple, vec3 &v)
+inline int _get_vec3_from_tuple(PyObject * tuple, vec3 & v)
 {
     if (_get_float_from_tuple(0, tuple, v.x)
         || _get_float_from_tuple(1, tuple, v.y)
@@ -549,47 +521,6 @@ static PyObject *method_clear_lights(RayCasterObject *self)
 }
 
 
-/// When the function returns true, the intersection point is given by R.Origin + t * R.Dir
-/// The barycentric coordinates of the intersection in the triangle are u, v, 1-u-v (useful for Gouraud shading or texture mapping)
-/// \param segment  The segment to test
-/// \param triangle  The triangle to intersect
-/// \param closest  The closest intersection point already found
-/// \param dist the distance from the origin of the ray to the intersection point
-/// \param u baricentric coordinate
-/// \param v baricentric coordinate
-/// \return true if the ray intersects the triangle, false otherwise
-static inline bool
-segment_triangle_intersect(const pos2 &segment, const pos3 &triangle, float closest, float *dist, float *u, float *v)
-{
-    vec3 E1 = vec3_sub(triangle.B, triangle.A);
-    vec3 E2 = vec3_sub(triangle.C, triangle.A);
-    vec3 N = vec3_cross(E1, E2);
-
-//    vec3 N = {(triangle.B.y - triangle.A.y) * (triangle.C.z - triangle.A.z) - (triangle.B.z - triangle.A.z) * (triangle.C.y - triangle.A.y),
-//              (triangle.B.z - triangle.A.z) * (triangle.C.x - triangle.A.x) - (triangle.B.x - triangle.A.x) * (triangle.C.z - triangle.A.z),
-//              (triangle.B.x - triangle.A.x) * (triangle.C.y - triangle.A.y) - (triangle.B.y - triangle.A.y) * (triangle.C.x - triangle.A.x)};
-
-    float det = -vec3_dot(segment.B, N);
-
-    vec3 AO = vec3_sub(segment.A, triangle.A);
-    *dist = vec3_dot(AO, N) / det;
-
-    if (*dist < 0 || *dist >= closest)  // The test "*dist < 0" prevent the camera to enter the dark mirror dimension
-        return false;
-
-    vec3 DAO = vec3_cross(AO, segment.B);
-
-    *u = vec3_dot(E2, DAO) / det;
-    if (*u < 0)  // prevent the surfaces from being stretched to infinity (causes a crash)
-        return false;
-
-    *v = -vec3_dot(E1, DAO) / det;
-
-    return (*v >= 0. && (*u + *v) <= 1.0);  // prevent the surfaces from being stretched to infinity (causes a crash)
-    // -vec3_dot(dir, N) >= EPSILON // prevent the surfaces from being seen from behind
-}
-
-
 /// Gets the color of a pixel on a surface at the given coordinates
 /// \param buffer py_buffer object containing the surface datar
 /// \param u baricentric coordinate of the pixel on the surface
@@ -606,28 +537,6 @@ static inline unsigned char *get_pixel_from_buffer(const Py_buffer &buffer, floa
     long *buf = (long *) buffer.buf;
     long *pixel = buf + (y * width + x);
     return (reinterpret_cast<unsigned char *> (pixel)) - 2;
-}
-
-
-/// Compute the minimum distance between a point and a line
-/// \param point position of the point
-/// \param line_point position of a point on the line
-/// \param line_direction vector representing the direction of the line
-/// \return distance
-static inline float line_point_distance(const vec3 point, const vec3 line_point, const vec3 line_direction)
-{
-    const vec3 s = vec3_sub(line_direction, line_point);
-    const vec3 w = vec3_sub(point, line_point);
-    const float ps = vec3_dot(w, s);
-
-    if (ps <= 0)
-        return vec3_length(w);
-
-    const float l2 = vec3_dot(s, s);
-    if (ps >= l2)
-        return vec3_length(vec3_sub(point, line_direction));
-
-    return vec3_length(vec3_sub(point, vec3_add(line_point, vec3_dot_float(s, ps / l2))));
 }
 
 /// Compute weather or not a pixel should be drawn depending of the alpha value
@@ -806,7 +715,6 @@ void thread_worker()
         }
     }
 }
-
 
 static PyObject *method_raycasting(RayCasterObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -1055,7 +963,6 @@ static RayCasterObject *RayCaster_new(PyTypeObject * type)
 
     return self;
 }
-
 
 /// Destructor of the raycaster object.
 /// \param self    the raycaster object
