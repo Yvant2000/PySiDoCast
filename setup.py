@@ -21,6 +21,8 @@ def main():
             Extension(
                 "pysidocast",
                 ["src/casting.cpp"],
+                include_dirs=["src/"],
+                language="c++",
                 extra_compile_args=args
             )
         ]
