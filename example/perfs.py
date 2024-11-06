@@ -37,7 +37,7 @@ print(f"add_light: {end - start}")
 
 # test display walls
 start = timer()
-scene.render(render_image, (0, 0, 0))
+scene.render(render_image, (0, 0, 0), threads=1)
 end = timer()
 print(f"render {WALLS} walls and {LIGHTS} lights: {end - start}")
 
