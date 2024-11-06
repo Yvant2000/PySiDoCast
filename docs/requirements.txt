@@ -1,4 +1,3 @@
-m2r
 sphinx
+sphinx-rtd-theme
 pysidocast
-

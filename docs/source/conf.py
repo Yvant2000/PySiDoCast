@@ -19,7 +19,6 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.intersphinx",
-    "m2r",
 ]
 
 templates_path = ['_templates']
