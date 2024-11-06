@@ -1,7 +1,7 @@
-#ifndef CASTING_CPP_GEOMETRY_H
-#define CASTING_CPP_GEOMETRY_H
+#ifndef CASTING_CPP_GEOMETRY_HXX
+#define CASTING_CPP_GEOMETRY_HXX
 
-#include "vector3.h"
+#include "vector3.hxx"
 
 struct pos2
 {
@@ -92,4 +92,4 @@ static inline float line_point_distance(const vec3 point, const vec3 line_point,
     return vec3_length(vec3_sub(point, vec3_add(line_point, vec3_dot_float(s, ps / l2))));
 }
 
-#endif //CASTING_CPP_GEOMETRY_H
+#endif //CASTING_CPP_GEOMETRY_HXX

@@ -1,5 +1,5 @@
-#ifndef CASTING_CPP_DITHERING_H
-#define CASTING_CPP_DITHERING_H
+#ifndef CASTING_CPP_DITHERING_HXX
+#define CASTING_CPP_DITHERING_HXX
 
 #include <array>
 #include <Python.h>
@@ -58,4 +58,4 @@ static inline bool alpha_dither(float alpha, Py_ssize_t x, Py_ssize_t y)
     return alpha < DITHER_MATRIX[(y % DITHERING_SIZE) * DITHERING_SIZE + (x % DITHERING_SIZE)];
 }
 
-#endif //CASTING_CPP_DITHERING_H
+#endif //CASTING_CPP_DITHERING_HXX

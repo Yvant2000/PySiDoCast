@@ -1,5 +1,5 @@
-#ifndef CASTING_CPP_LIGHT_H
-#define CASTING_CPP_LIGHT_H
+#ifndef CASTING_CPP_LIGHT_HXX
+#define CASTING_CPP_LIGHT_HXX
 
 ///
 /// \brief A light source in the scene.
@@ -15,4 +15,4 @@ struct Light
     // TODO: Might add an intensity offset (useful for cel shading)
 };
 
-#endif //CASTING_CPP_LIGHT_H
+#endif //CASTING_CPP_LIGHT_HXX

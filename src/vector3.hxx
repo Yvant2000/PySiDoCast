@@ -1,5 +1,5 @@
-#ifndef CASTING_CPP_VECTOR3_H
-#define CASTING_CPP_VECTOR3_H
+#ifndef CASTING_CPP_VECTOR3_HXX
+#define CASTING_CPP_VECTOR3_HXX
 
 #include <cmath>
 
@@ -82,4 +82,4 @@ static inline float vec3_dist(const vec3 &dot1, const vec3 &dot2)
     return sqrtf(powf(dot1.x - dot2.x, 2) + powf(dot1.y - dot2.y, 2) + powf(dot1.z - dot2.z, 2));
 }
 
-#endif //CASTING_CPP_VECTOR3_H
+#endif //CASTING_CPP_VECTOR3_HXX

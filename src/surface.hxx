@@ -1,7 +1,7 @@
-#ifndef CASTING_CPP_SURFACE_H
-#define CASTING_CPP_SURFACE_H
+#ifndef CASTING_CPP_SURFACE_HXX
+#define CASTING_CPP_SURFACE_HXX
 
-#include "geometry.h"
+#include "geometry.hxx"
 
 static constinit const int ALPHA = 3;
 static constinit const int RED = 2;
@@ -113,4 +113,4 @@ get_closest_intersection(const pos2 &ray, float max_distance, const std::vector<
     return closest;
 }
 
-#endif //CASTING_CPP_SURFACE_H
+#endif //CASTING_CPP_SURFACE_HXX

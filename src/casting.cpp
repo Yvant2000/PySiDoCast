@@ -6,11 +6,11 @@
 #include <queue>
 #include <numbers>
 
-#include "dithering.h"
-#include "vector3.h"
-#include "geometry.h"
-#include "light.h"
-#include "surface.h"
+#include "dithering.hxx"
+#include "vector3.hxx"
+#include "geometry.hxx"
+#include "light.hxx"
+#include "surface.hxx"
 
 /// PyObject containing the RayCaster
 typedef struct t_RayCasterObject
