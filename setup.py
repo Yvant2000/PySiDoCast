@@ -8,6 +8,8 @@ compiler = ccompiler.get_default_compiler()
 args = []
 if compiler == 'msvc':
     args = ["/O2", "/GS-", "/fp:fast", "/std:c++latest", "/Zc:strictStrings-", "/Ob3"]  # , "/Wall"
+else:
+    args = ["-O3", "-std=c++20"]
 
 
 def main():
