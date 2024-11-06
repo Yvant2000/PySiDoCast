@@ -1,0 +1,5 @@
+include src/dithering.hxx
+include src/geometry.hxx
+include src/light.hxx
+include src/surface.hxx
+include src/vector3.hxx
