@@ -13,7 +13,7 @@ To install PySiDoCast, simply use pip:
 pip install pysidocast
 ```
 
-![Screenshot of example](https://media.discordapp.net/attachments/914913842260217898/1065063845191753790/image.png)
+![Screenshot of example](https://raw.githubusercontent.com/Yvant2000/PySiDoCast/refs/heads/master/images/main.png)
 
 ## Usage
 
@@ -50,7 +50,7 @@ while True:
             exit()
 ```
 
-![Example](https://media.discordapp.net/attachments/914913842260217898/1065061390240456745/image.png)
+![Example](https://raw.githubusercontent.com/Yvant2000/PySiDoCast/refs/heads/master/images/example.png)
 
 # Features
 

@@ -57,7 +57,7 @@ For example:
 >>> scene.render(screen, (0, 1, 0), 0, 90, 60)
 >>> pygame.display.update()
 
-.. image:: https://media.discordapp.net/attachments/914913842260217898/1065373419572564088/image.png
+.. image:: https://raw.githubusercontent.com/Yvant2000/PySiDoCast/refs/heads/master/images/triangle.png
     :alt: A triangle in the scene
 
 
@@ -73,7 +73,7 @@ For example:
 >>> scene.render(screen, (0, 1, 0), 0, 90, 60)
 >>> pygame.display.update()
 
-.. image:: https://cdn.discordapp.com/attachments/914913842260217898/1065376365366485133/image.png
+.. image:: https://raw.githubusercontent.com/Yvant2000/PySiDoCast/refs/heads/master/images/diamond.png
     :alt: A plane in the scene
 
 
@@ -95,7 +95,7 @@ For example:
 >>> scene.render(screen, (0, 1, 0), 0, 90, 60)
 >>> pygame.display.update()
 
-.. image:: https://media.discordapp.net/attachments/914913842260217898/1065377127966449684/image.png
+.. image:: https://raw.githubusercontent.com/Yvant2000/PySiDoCast/refs/heads/master/images/wall.png
     :alt: A wall in the scene
 
 
@@ -128,7 +128,7 @@ Example with radial light:
 >>> scene.render(screen, (0, 1, 0), 0, 90, 60)
 >>> pygame.display.update()
 
-.. image:: https://media.discordapp.net/attachments/914913842260217898/1065378419296186418/image.png
+.. image:: https://raw.githubusercontent.com/Yvant2000/PySiDoCast/refs/heads/master/images/circular%20light.png
     :alt: A wall with a light in the scene
 
 Example with directional light:
@@ -138,7 +138,7 @@ Example with directional light:
 >>> scene.render(screen, (0, 1, 0), 0, 90, 60)
 >>> pygame.display.update()
 
-.. image:: https://media.discordapp.net/attachments/914913842260217898/1065381141844078652/image.png
+.. image:: https://raw.githubusercontent.com/Yvant2000/PySiDoCast/refs/heads/master/images/spot_light.png
     :alt: A well with a directionnal light in the scene
 
 
