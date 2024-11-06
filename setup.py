@@ -20,7 +20,7 @@ def main():
         ext_modules=[
             Extension(
                 "pysidocast",
-                ["src/casting.cpp", "src/dithering.cpp"],
+                ["src/casting.cpp"],
                 extra_compile_args=args
             )
         ]
